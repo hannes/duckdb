@@ -74,7 +74,7 @@ TEST_CASE("Test logical_set", "[api]") {
 }
 
 TEST_CASE("Test logical_sample", "[api]") {
-	test_helper("SELECT * FROM (SELECT 42 as i) USING SAMPLE RESERVOIR(20%);");
+	test_helper("SELECT * FROM (SELECT 42 as i) USING SAMPLE RESERVOIR(20%)");
 }
 
 TEST_CASE("Test logical_limit_percent", "[api]") {
@@ -83,4 +83,8 @@ TEST_CASE("Test logical_limit_percent", "[api]") {
 
 TEST_CASE("Test logical_limit", "[api]") {
 	test_helper("SELECT 42 LIMIT 1");
+}
+
+TEST_CASE("Test logical_join", "[api]") {
+	test_helper("SELECT * FROM (SELECT 42 as i), (SELECT 42 as j) WHERE i = j");
 }
