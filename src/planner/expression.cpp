@@ -118,6 +118,20 @@ unique_ptr<Expression> Expression::Deserialize(Deserializer &source, ClientConte
 	case ExpressionType::VALUE_CONSTANT:
 		result = BoundConstantExpression::Deserialize(context, type, reader);
 		break;
+	case ExpressionType::COMPARE_EQUAL:
+	case ExpressionType::COMPARE_NOTEQUAL:
+	case ExpressionType::COMPARE_LESSTHAN:
+	case ExpressionType::COMPARE_GREATERTHAN:
+	case ExpressionType::COMPARE_LESSTHANOREQUALTO:
+	case ExpressionType::COMPARE_GREATERTHANOREQUALTO:
+	case ExpressionType::COMPARE_IN:
+	case ExpressionType::COMPARE_NOT_IN:
+	case ExpressionType::COMPARE_DISTINCT_FROM:
+	case ExpressionType::COMPARE_BETWEEN:
+	case ExpressionType::COMPARE_NOT_BETWEEN:
+	case ExpressionType::COMPARE_NOT_DISTINCT_FROM:
+		result = BoundComparisonExpression::Deserialize(context, type, reader);
+		break;
 	default:
 		throw SerializationException("Unsupported type for expression deserialization!" + ExpressionTypeToString(type));
 	}
