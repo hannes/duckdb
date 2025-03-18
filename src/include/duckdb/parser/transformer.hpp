@@ -355,6 +355,10 @@ private:
 	void TransformWindowFrame(duckdb_libpgquery::PGWindowDef &window_spec, WindowExpression &expr);
 
 	unique_ptr<SampleOptions> TransformSampleOptions(optional_ptr<duckdb_libpgquery::PGNode> options);
+
+	unique_ptr<TableRef> TransformMatchRecognize(unique_ptr<TableRef> table,
+	                                             optional_ptr<duckdb_libpgquery::PGNode> options);
+
 	//! Returns true if an expression is only a star (i.e. "*", without any other decorators)
 	bool ExpressionIsEmptyStar(ParsedExpression &expr);
 
