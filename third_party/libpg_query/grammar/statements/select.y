@@ -785,6 +785,60 @@ opt_tablesample_clause:
 		;
 
 
+measures_list:
+			measures_el								{ $$ = list_make1($1); }
+			| measures_list ',' measures_el				{ $$ = lappend($1, $3); }
+		;
+
+
+measures_el:	a_expr AS ColLabelOrString
+			{
+					$$ = makeNode(PGResTarget);
+					$$->name = $3;
+					$$->indirection = NIL;
+					$$->val = (PGNode *)$1;
+					$$->location = @1;
+				}
+
+
+pattern_list:
+            pattern_el								{ $$ = list_make1($1); }
+            | pattern_list pattern_el				{ $$ = lappend($1, $2); }
+        ;
+
+pattern_el:	ColLabelOrString
+			{
+				$$ = list_make1($1);
+				} ;
+
+
+defines_list:
+            defines_el								{ $$ = list_make1($1); }
+            | defines_list ',' defines_el				{ $$ = lappend($1, $3); }
+        ;
+
+defines_el:	ColLabelOrString AS a_expr
+			{
+					$$ = makeNode(PGResTarget);
+					$$->name = $1;
+					$$->indirection = NIL;
+					$$->val = (PGNode *)$3;
+					$$->location = @1;
+				}
+
+
+match_recognize_clause:
+        MATCH_RECOGNIZE '(' opt_partition_clause opt_sort_clause MEASURES measures_list PATTERN '(' pattern_list ')' DEFINE defines_list')'
+            {
+        $$ = makeMatchRecognizeClause($3, $4, $6, $9, $12, @1);
+    }
+;
+
+
+opt_match_recognize_clause:
+			match_recognize_clause			{ $$ = $1; }
+			| /*EMPTY*/					{ $$ = NULL; }
+		;
 opt_repeatable_clause:
 			REPEATABLE '(' ICONST ')'	{ $$ = $3; }
 			| /*EMPTY*/					{ $$ = -1; }
@@ -1051,13 +1105,13 @@ alias_prefix_colon_clause:
 /*
  * table_ref is where an alias clause can be attached.
  */
-table_ref:	relation_expr opt_alias_clause opt_tablesample_clause
+table_ref:	relation_expr opt_alias_clause opt_tablesample_clause opt_match_recognize_clause
 				{
 					$1->alias = $2;
 					$1->sample = $3;
 					$$ = (PGNode *) $1;
 				}
-			| alias_prefix_colon_clause relation_expr opt_tablesample_clause
+			| alias_prefix_colon_clause relation_expr opt_tablesample_clause opt_match_recognize_clause
                 {
                     $2->alias = $1;
                     $2->sample = $3;
@@ -1097,7 +1151,7 @@ table_ref:	relation_expr opt_alias_clause opt_tablesample_clause
 					n->coldeflist = (PGList*) lsecond($3);
 					$$ = (PGNode *) n;
 				}
-			| select_with_parens opt_alias_clause opt_tablesample_clause
+			| select_with_parens opt_alias_clause opt_tablesample_clause opt_match_recognize_clause
 				{
 					PGRangeSubselect *n = makeNode(PGRangeSubselect);
 					n->lateral = false;
@@ -1106,7 +1160,7 @@ table_ref:	relation_expr opt_alias_clause opt_tablesample_clause
 					n->sample = $3;
 					$$ = (PGNode *) n;
 				}
-			| alias_prefix_colon_clause select_with_parens opt_tablesample_clause
+			| alias_prefix_colon_clause select_with_parens opt_tablesample_clause opt_match_recognize_clause
                 {
                     PGRangeSubselect *n = makeNode(PGRangeSubselect);
                     n->lateral = false;
