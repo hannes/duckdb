@@ -79,6 +79,8 @@ typedef struct PGRangeVar {
 	PGAlias *alias;      /* table alias & optional column aliases */
 	int location;        /* token location, or -1 if unknown */
 	PGNode *sample;      /* sample, if any */
+	PGNode *match_recognize;      /* match_recognize, if any */
+
 } PGRangeVar;
 
 /*

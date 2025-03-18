@@ -487,6 +487,7 @@ typedef struct PGRangeSubselect {
 	PGNode *subquery; /* the untransformed sub-select clause */
 	PGAlias *alias;   /* table alias & optional column aliases */
 	PGNode *sample;   /* sample options (if any) */
+
 } PGRangeSubselect;
 
 /*
@@ -2241,4 +2242,19 @@ typedef struct PGCommentOnStmt {
 	PGNode *column_expr;
 } PGCommentOnStmt;
 
+
+/* ----------------------
+ *      MATCH_RECOGNIZE statement
+ * ----------------------
+ */
+typedef struct PGMatchRecognizeStmt {
+	PGList *partition_clause;
+	PGList *order_clause;
+	PGList *measures_clause;
+	PGList *pattern_clause;
+	PGList *defines_clause;
+	int location;
+} PGMatchRecognizeStmt;
+
 }
+

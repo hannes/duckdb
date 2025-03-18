@@ -181,6 +181,20 @@ makeSampleOptions(PGNode *sample_size, char *method, int *seed, int location) {
 	return (PGNode *)n;
 }
 
+
+static PGNode *makeMatchRecognizeClause(PGList *partition_clause,PGList *order_clause, PGList *measures_clause, PGList *pattern_clause, PGList *defines_clause, int location) {
+	PGMatchRecognizeStmt *n = makeNode(PGMatchRecognizeStmt);
+	n->partition_clause = partition_clause;
+    n->order_clause = order_clause;
+    n->measures_clause = measures_clause;
+    n->pattern_clause = pattern_clause;
+    n->defines_clause = defines_clause;
+    n->location = location;
+	return (PGNode *)n;
+
+}
+
+
 /* makeLimitPercent()
  * Make limit percent node
  */

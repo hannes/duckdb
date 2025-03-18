@@ -433,6 +433,7 @@ typedef enum PGNodeTag {
 	T_PGAttachStmt,
 	T_PGDetachStmt,
 	T_PGUseStmt,
+	T_PGMatchRecognizeStmt,
 
 	/*
 	 * TAGS FOR PARSE TREE NODES (parsenodes.h)
