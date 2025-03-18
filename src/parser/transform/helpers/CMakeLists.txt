@@ -5,6 +5,7 @@ add_library_unity(
   transform_cte.cpp
   transform_groupby.cpp
   transform_orderby.cpp
+  transform_match_recognize.cpp
   transform_sample.cpp
   transform_typename.cpp
   nodetype_to_string.cpp)
