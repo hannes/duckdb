@@ -2323,4 +2323,18 @@ typedef struct PGFunctionParameter {
 	PGExpr *defaultValue;		  /* default value of parameter (optional) */
 } PGFunctionParameter;
 
+
+/* ----------------------
+ *      MATCH_RECOGNIZE statement
+ * ----------------------
+ */
+typedef struct PGMatchRecognizeStmt {
+	PGList *partition_clause;
+	PGList *order_clause;
+	PGList *measures_clause;
+	PGList *pattern_clause;
+	PGList *defines_clause;
+	int location;
+} PGMatchRecognizeStmt;
+
 }
