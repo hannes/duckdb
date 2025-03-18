@@ -16,7 +16,7 @@ query I
 from test MATCH_RECOGNIZE(
     PARTITION BY p
     ORDER BY o
-    MEASURES A.v AS a_val
-    PATTERN (A)
-    DEFINE A as true);
+    MEASURES A.v AS a_val, B.v as b_val
+    PATTERN (A B)
+    DEFINE A as true, B as true);
 ----

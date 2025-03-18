@@ -2642,11 +2642,11 @@ static const yytype_int16 yyrhs[] =
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
 static const yytype_uint16 yyrline[] =
 {
-       0,   513,   513,   529,   541,   550,   551,   552,   553,   554,
-     555,   556,   557,   558,   559,   560,   561,   562,   563,   564,
-     565,   566,   567,   568,   569,   570,   571,   572,   573,   574,
-     575,   576,   577,   578,   579,   580,   581,   582,   583,   584,
-     585,   586,   587,   588,   589,   590,   592,     9,    18,    27,
+       0,   514,   514,   530,   542,   551,   552,   553,   554,   555,
+     556,   557,   558,   559,   560,   561,   562,   563,   564,   565,
+     566,   567,   568,   569,   570,   571,   572,   573,   574,   575,
+     576,   577,   578,   579,   580,   581,   582,   583,   584,   585,
+     586,   587,   588,   589,   590,   591,   593,     9,    18,    27,
       36,    45,    54,    63,    72,    85,    87,    93,    94,    99,
      103,   107,   118,   126,   130,   139,   148,   157,   166,   175,
      183,   192,   200,   208,   217,   226,   235,   244,   261,   270,
@@ -20974,14 +20974,14 @@ yyreduce:
   switch (yyn)
     {
         case 2:
-#line 514 "third_party/libpg_query/grammar/grammar.y"
+#line 515 "third_party/libpg_query/grammar/grammar.y"
     {
 				pg_yyget_extra(yyscanner)->parsetree = (yyvsp[(1) - (1)].list);
 			;}
     break;
 
   case 3:
-#line 530 "third_party/libpg_query/grammar/grammar.y"
+#line 531 "third_party/libpg_query/grammar/grammar.y"
     {
 					if ((yyvsp[(1) - (3)].list) != NIL)
 					{
@@ -20996,7 +20996,7 @@ yyreduce:
     break;
 
   case 4:
-#line 542 "third_party/libpg_query/grammar/grammar.y"
+#line 543 "third_party/libpg_query/grammar/grammar.y"
     {
 					if ((yyvsp[(1) - (1)].node) != NULL)
 						(yyval.list) = list_make1(makeRawStmt((yyvsp[(1) - (1)].node), 0));
@@ -21006,7 +21006,7 @@ yyreduce:
     break;
 
   case 46:
-#line 592 "third_party/libpg_query/grammar/grammar.y"
+#line 593 "third_party/libpg_query/grammar/grammar.y"
     { (yyval.node) = NULL; ;}
     break;
 
