@@ -101,8 +101,11 @@ class TableFunctionRef;
 class EmptyTableRef;
 class ExpressionListRef;
 class ColumnDataRef;
+class MatchRecognizeRef;
 class PivotRef;
 class ShowRef;
+class SubqueryRef;
+class TableFunctionRef;
 
 //===--------------------------------------------------------------------===//
 // Other
