@@ -8,6 +8,8 @@
 #include "duckdb/parser/query_node/set_operation_node.hpp"
 #include "duckdb/parser/tableref/list.hpp"
 
+#include <duckdb/parser/tableref/match_recognize_ref.hpp>
+
 namespace duckdb {
 
 void ParsedExpressionIterator::EnumerateChildren(const ParsedExpression &expression,
@@ -244,6 +246,13 @@ void ParsedExpressionIterator::EnumerateTableRefChildren(
 	case TableReferenceType::TABLE_FUNCTION: {
 		auto &tf_ref = ref.Cast<TableFunctionRef>();
 		expr_callback(tf_ref.function);
+		break;
+	}
+	case TableReferenceType::MATCH_RECOGNIZE: {
+		auto &mr_ref = ref.Cast<MatchRecognizeRef>();
+		EnumerateTableRefChildren(*mr_ref.input, expr_callback, ref_callback);
+		D_ASSERT(0);
+		// TODO what about the expressions in the config??
 		break;
 	}
 	case TableReferenceType::BASE_TABLE:

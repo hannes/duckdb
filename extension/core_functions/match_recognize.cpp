@@ -29,6 +29,11 @@ static unique_ptr<FunctionData> MatchRecognizeBind(ClientContext &context, Aggre
 	return nullptr;
 }
 
+static void MatchRecognizeWindow(AggregateInputData &aggr_input_data, const WindowPartitionInput &partition,
+                                 const_data_ptr_t g_state, data_ptr_t l_state, const SubFrames &subframes,
+                                 Vector &result, idx_t rid) {
+}
+
 AggregateFunction MatchRecognizeFun::GetFunction() {
 	auto func = AggregateFunction({LogicalType::ANY}, LogicalTypeId::ANY, MatchRecognizeStateSize,
 	                              MatchRecognizeStateInitialize, MatchRecognizeUpdate, nullptr, MatchRecognizeFinalize,
