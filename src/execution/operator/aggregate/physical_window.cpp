@@ -3,6 +3,7 @@
 #include "duckdb/common/sort/partition_state.hpp"
 #include "duckdb/function/window/window_aggregate_function.hpp"
 #include "duckdb/function/window/window_executor.hpp"
+#include "duckdb/function/window/window_match_recognize.hpp"
 #include "duckdb/function/window/window_rank_function.hpp"
 #include "duckdb/function/window/window_rownumber_function.hpp"
 #include "duckdb/function/window/window_shared_expressions.hpp"
