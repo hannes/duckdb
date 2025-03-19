@@ -45,7 +45,9 @@ public:
 	unique_ptr<MatchRecognizeConfig> config;
 
 public:
-	MatchRecognizeRef(unique_ptr<TableRef> input_p, unique_ptr<MatchRecognizeConfig> config_p) : TableRef(TableReferenceType::MATCH_RECOGNIZE), input(std::move(input_p)), config(std::move(config_p)) {}
+	MatchRecognizeRef(unique_ptr<TableRef> input_p, unique_ptr<MatchRecognizeConfig> config_p)
+	    : TableRef(TableReferenceType::MATCH_RECOGNIZE), input(std::move(input_p)), config(std::move(config_p)) {
+	}
 
 public:
 	string ToString() const override;

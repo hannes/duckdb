@@ -15,7 +15,6 @@
 #include "duckdb/parser/query_node/select_node.hpp"
 #include "duckdb/parser/statement/list.hpp"
 #include "duckdb/parser/tableref/list.hpp"
-#include "duckdb/parser/tableref/table_function_ref.hpp"
 #include "duckdb/planner/bound_query_node.hpp"
 #include "duckdb/planner/expression.hpp"
 #include "duckdb/planner/expression_binder/returning_binder.hpp"
@@ -420,6 +419,9 @@ unique_ptr<BoundTableRef> Binder::Bind(TableRef &ref) {
 		break;
 	case TableReferenceType::DELIM_GET:
 		result = Bind(ref.Cast<DelimGetRef>());
+		break;
+	case TableReferenceType::MATCH_RECOGNIZE:
+		result = Bind(ref.Cast<MatchRecognizeRef>());
 		break;
 	case TableReferenceType::CTE:
 	case TableReferenceType::INVALID:

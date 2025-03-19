@@ -92,14 +92,16 @@ class ForeignKeyConstraint;
 class TableRef;
 
 class BaseTableRef;
-class JoinRef;
-class SubqueryRef;
-class TableFunctionRef;
+class ColumnDataRef;
+class DelimGetRef;
 class EmptyTableRef;
 class ExpressionListRef;
-class ColumnDataRef;
+class JoinRef;
+class MatchRecognizeRef;
 class PivotRef;
 class ShowRef;
+class SubqueryRef;
+class TableFunctionRef;
 
 //===--------------------------------------------------------------------===//
 // Other
