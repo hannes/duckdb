@@ -37,7 +37,7 @@ static void MatchRecognizeWindow(AggregateInputData &aggr_input_data, const Wind
 AggregateFunction MatchRecognizeFun::GetFunction() {
 	auto func = AggregateFunction({LogicalType::ANY}, LogicalTypeId::ANY, MatchRecognizeStateSize,
 	                              MatchRecognizeStateInitialize, MatchRecognizeUpdate, nullptr, MatchRecognizeFinalize,
-	                              nullptr, MatchRecognizeBind, nullptr, nullptr, nullptr);
+	                              nullptr, MatchRecognizeBind, nullptr, nullptr, MatchRecognizeWindow);
 
 	return func;
 }
