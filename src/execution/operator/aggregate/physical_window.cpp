@@ -5,6 +5,7 @@
 #include "duckdb/common/types/row/tuple_data_iterator.hpp"
 #include "duckdb/function/window/window_aggregate_function.hpp"
 #include "duckdb/function/window/window_executor.hpp"
+#include "duckdb/function/window/window_match_recognize.hpp"
 #include "duckdb/function/window/window_rank_function.hpp"
 #include "duckdb/function/window/window_rownumber_function.hpp"
 #include "duckdb/function/window/window_shared_expressions.hpp"
