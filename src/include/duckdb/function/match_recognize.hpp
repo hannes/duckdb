@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckDB
 //
-// duckdb/function/lambda_functions.hpp
+// duckdb/function/match_recognize.hpp
 //
 //
 //===----------------------------------------------------------------------===//
@@ -11,8 +11,18 @@
 #include "duckdb/function/function.hpp"
 
 namespace duckdb {
+
+struct MatchRecognizeFunctionData : FunctionData {
+	unique_ptr<FunctionData> Copy() const override {
+		return make_uniq<MatchRecognizeFunctionData>();
+	}
+	bool Equals(const FunctionData &other_p) const override {
+		return true;
+	}
+};
+
 struct MatchRecognizeFun {
-	static AggregateFunction GetFunction();
+	static unique_ptr<AggregateFunction> GetFunction();
 };
 
 } // namespace duckdb
