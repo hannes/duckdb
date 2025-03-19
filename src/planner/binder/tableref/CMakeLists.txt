@@ -20,6 +20,7 @@ add_library_unity(
   plan_dummytableref.cpp
   plan_expressionlistref.cpp
   plan_joinref.cpp
+  plan_match_recognize_ref.cpp
   plan_pivotref.cpp
   plan_subqueryref.cpp
   plan_table_function.cpp)

@@ -228,7 +228,9 @@ static unique_ptr<WindowExecutor> WindowExecutorFactory(BoundWindowExpression &w
 		return make_uniq<WindowLastValueExecutor>(wexpr, context, shared);
 	case ExpressionType::WINDOW_NTH_VALUE:
 		return make_uniq<WindowNthValueExecutor>(wexpr, context, shared);
-		break;
+	case ExpressionType::WINDOW_MATCH_RECOGNIZE:
+		return make_uniq<WindowMatchRecognizeExecutor>(wexpr, context, shared);
+
 	default:
 		throw InternalException("Window aggregate type %s", ExpressionTypeToString(wexpr.GetExpressionType()));
 	}

@@ -465,6 +465,9 @@ unique_ptr<LogicalOperator> Binder::CreatePlan(BoundTableRef &ref) {
 	case TableReferenceType::DELIM_GET:
 		root = CreatePlan(ref.Cast<BoundDelimGetRef>());
 		break;
+	case TableReferenceType::MATCH_RECOGNIZE:
+		root = CreatePlan(ref.Cast<BoundMatchRecognizeRef>());
+		break;
 	case TableReferenceType::INVALID:
 	default:
 		throw InternalException("Unsupported bound table ref type (%s)", EnumUtil::ToString(ref.type));

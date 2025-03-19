@@ -34,16 +34,11 @@ static void MatchRecognizeWindow(AggregateInputData &aggr_input_data, const Wind
                                  Vector &result, idx_t rid) {
 }
 
-AggregateFunction MatchRecognizeFun::GetFunction() {
-	auto func = AggregateFunction({LogicalType::ANY}, LogicalTypeId::ANY, MatchRecognizeStateSize,
-	                              MatchRecognizeStateInitialize, MatchRecognizeUpdate, nullptr, MatchRecognizeFinalize,
-	                              nullptr, MatchRecognizeBind, nullptr, nullptr, MatchRecognizeWindow);
-
-	return func;
+unique_ptr<AggregateFunction> MatchRecognizeFun::GetFunction() {
+	return unique_ptr<AggregateFunction>(
+	    new AggregateFunction({LogicalType::ANY}, LogicalTypeId::ANY, MatchRecognizeStateSize,
+	                          MatchRecognizeStateInitialize, MatchRecognizeUpdate, nullptr, MatchRecognizeFinalize,
+	                          nullptr, MatchRecognizeBind, nullptr, nullptr, MatchRecognizeWindow));
 }
 
 } // namespace duckdb
-
-// combine will  have to re-sort and partition??
-// TODO now to trigger this
-// will have to happen in transformer?
