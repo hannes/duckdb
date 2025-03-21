@@ -22,18 +22,6 @@ struct MatchRecognizeConfig {
 	vector<unique_ptr<ParsedExpression>> measures_expression_list;
 	vector<unique_ptr<ParsedExpression>> defines_expression_list;
 	// TODO pattern
-
-	string ToString() {
-		auto measures_string = StringUtil::Join(measures_expression_list, measures_expression_list.size(), ",",
-		                                        [](const unique_ptr<ParsedExpression> &s) { return s->ToString(); });
-		printf("measures_expression_list = %s\n", measures_string.c_str());
-
-		auto defines_string = StringUtil::Join(defines_expression_list, defines_expression_list.size(), ",",
-		                                       [](const unique_ptr<ParsedExpression> &s) { return s->ToString(); });
-		printf("defines_string = %s\n", defines_string.c_str());
-
-		return "";
-	}
 };
 
 //! Represents a SHOW/DESCRIBE/SUMMARIZE statement

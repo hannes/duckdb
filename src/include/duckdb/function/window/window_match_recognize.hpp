@@ -18,7 +18,9 @@ public:
 
 	unique_ptr<WindowExecutorGlobalState> GetGlobalState(const idx_t payload_count, const ValidityMask &partition_mask,
 	                                                     const ValidityMask &order_mask) const override;
-	unique_ptr<WindowExecutorLocalState> GetLocalState(const WindowExecutorGlobalState &gstate) const override;
+
+	void Finalize(WindowExecutorGlobalState &gstate, WindowExecutorLocalState &lstate,
+	              CollectionPtr collection) const override;
 
 protected:
 	void EvaluateInternal(WindowExecutorGlobalState &gstate, WindowExecutorLocalState &lstate, DataChunk &eval_chunk,
