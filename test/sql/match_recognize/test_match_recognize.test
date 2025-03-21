@@ -7,16 +7,29 @@
 # PRAGMA enable_verification
 
 statement ok
-create table test (p integer, o integer, v double);
+pragma threads=1;
 
 statement ok
-insert into test values (1, 1, 1.1), (1, 2, 1.2), (1, 3, 1.3),  (2, 1, 2.1), (2, 2, 3.2), (2, 3, 2.3);
+create table test (p integer, o integer, v double, v2 double);
+
+statement ok
+insert into test values (1, 3, 1.3, 10.3), (1, 1, 1.1, 10.1), (1, 2, 1.2, 10.2),  (2, 2, 2.2, 20.2), (2, 1, 2.1, 20.1),  (2, 3, 2.3, 20.3);
 
 query I
-from test MATCH_RECOGNIZE(
+SELECT COUNT(*) from test MATCH_RECOGNIZE(
     PARTITION BY p
     ORDER BY o
     MEASURES A.v AS a_val, B.v as b_val
     PATTERN (A B)
-    DEFINE A as true, B as true);
+    DEFINE A as v/10 > 1 , B as (v2-10)/10 > 2)
+----
+6
+
+query II
+explain from test MATCH_RECOGNIZE(
+    PARTITION BY p
+    ORDER BY o
+    MEASURES A.v AS a_val, B.v as b_val
+    PATTERN (A B)
+    DEFINE A as v/10 > 1 , B as (v2-10)/10 > 2)
 ----

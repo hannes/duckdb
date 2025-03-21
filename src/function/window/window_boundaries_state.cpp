@@ -389,11 +389,13 @@ WindowBoundsSet WindowBoundariesState::GetWindowBounds(const BoundWindowExpressi
 	case ExpressionType::WINDOW_LAST_VALUE:
 	case ExpressionType::WINDOW_NTH_VALUE:
 	case ExpressionType::WINDOW_AGGREGATE:
+	case ExpressionType::WINDOW_MATCH_RECOGNIZE:
 		result.insert(FRAME_BEGIN);
 		result.insert(FRAME_END);
 		break;
 	default:
-		throw InternalException("Window expression type %s", ExpressionTypeToString(wexpr.GetExpressionType()));
+		throw InternalException("Unrecognized window expression type %s",
+		                        ExpressionTypeToString(wexpr.GetExpressionType()));
 	}
 
 	//	Internal dependencies
