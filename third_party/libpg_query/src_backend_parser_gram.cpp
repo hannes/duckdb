@@ -26352,7 +26352,7 @@ yyreduce:
 					(yyvsp[(1) - (5)].range)->at_clause = (yyvsp[(3) - (5)].node);
 					(yyvsp[(1) - (5)].range)->alias = (yyvsp[(2) - (5)].alias);
 					(yyvsp[(1) - (5)].range)->sample = (yyvsp[(4) - (5)].node);
-					(yyvsp[(1) - (5)].range)->match_recognize = (yyvsp[(4) - (5)].node);
+					(yyvsp[(1) - (5)].range)->match_recognize = (yyvsp[(5) - (5)].node);
 					(yyval.node) = (PGNode *) (yyvsp[(1) - (5)].range);
 				;}
     break;
@@ -26363,7 +26363,7 @@ yyreduce:
 					(yyvsp[(2) - (5)].range)->at_clause = (yyvsp[(3) - (5)].node);
                     (yyvsp[(2) - (5)].range)->alias = (yyvsp[(1) - (5)].alias);
                     (yyvsp[(2) - (5)].range)->sample = (yyvsp[(4) - (5)].node);
-                    (yyvsp[(2) - (5)].range)->match_recognize = (yyvsp[(4) - (5)].node);
+                    (yyvsp[(2) - (5)].range)->match_recognize = (yyvsp[(5) - (5)].node);
                     (yyval.node) = (PGNode *) (yyvsp[(2) - (5)].range);
                 ;}
     break;

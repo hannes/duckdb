@@ -1132,7 +1132,7 @@ table_ref:	relation_expr opt_alias_clause opt_at_clause opt_tablesample_clause o
 					$1->at_clause = $3;
 					$1->alias = $2;
 					$1->sample = $4;
-					$1->match_recognize = $4;
+					$1->match_recognize = $5;
 					$$ = (PGNode *) $1;
 				}
 			| alias_prefix_colon_clause relation_expr opt_at_clause opt_tablesample_clause opt_match_recognize_clause
@@ -1140,7 +1140,7 @@ table_ref:	relation_expr opt_alias_clause opt_at_clause opt_tablesample_clause o
 					$2->at_clause = $3;
                     $2->alias = $1;
                     $2->sample = $4;
-                    $2->match_recognize = $4;
+                    $2->match_recognize = $5;
                     $$ = (PGNode *) $2;
                 }
             | func_table func_alias_clause opt_tablesample_clause
