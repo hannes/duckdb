@@ -42,6 +42,7 @@ void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate, W
 	// the sorted per-partition is in here:
 	collection->inputs->Print();
 
+
 	// we do our thing here and then dump the result in the global state for scanning later
 	// how do we get back the context below?? which rows belonged to this?
 	// ranges?? WindowCursor ??
@@ -53,7 +54,24 @@ void WindowMatchRecognizeExecutor::EvaluateInternal(WindowExecutorGlobalState &g
 
 	// here we fill the result, but with what? this looks like a scan in principle.
 
-	FlatVector::Validity(result).SetAllInvalid(count);
+	// we know we are within a single hash group
+
+	// row index points into partition mask
+	// at the beginning of each partition a bit is set to mark new partition partition_mask_p
+
+
+
+	// all those functions only operate on a single hash group at a time but there may be multiple partitions in it
+	// partition boundaries dont' change
+
+
+
+
+	// void WindowConstantAggregatorLocalState::Sink(DataChunk &sink_chunk, DataChunk &coll_chunk, idx_t row,
+
+		// row windows into the hash group
+
+		FlatVector::Validity(result).SetAllInvalid(count);
 	D_ASSERT(result.GetType().id() == LogicalTypeId::STRUCT);
 	auto &struct_entries = StructVector::GetEntries(result);
 	// first entry is list of classifiers

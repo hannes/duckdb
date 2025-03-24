@@ -31,8 +31,6 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	// window
 	// filter
 
-	// new window expression type
-
 	// re turn boundMatchrecognize ref with logical plan inside
 	//
 	auto return_type = LogicalType::STRUCT({{"classifiers", LogicalType::LIST(LogicalType::VARCHAR)},

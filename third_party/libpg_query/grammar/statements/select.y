@@ -844,6 +844,28 @@ opt_repeatable_clause:
 			| /*EMPTY*/					{ $$ = -1; }
 		;
 
+
+at_unit:
+	TIMESTAMP { $$ = (char*) "TIMESTAMP"; }
+	| VERSION_P { $$ = (char*) "VERSION"; }
+	;
+
+at_specifier:
+		at_unit EQUALS_GREATER a_expr
+			{
+				PGAtClause *n = makeNode(PGAtClause);
+				n->unit = $1;
+				n->expr = $3;
+				$$ = (PGNode *) n;
+			}
+	;
+
+opt_at_clause:
+		AT '(' at_specifier ')' { $$ = $3; }
+		| /*EMPTY*/				{ $$ = NULL; }
+	;
+
+
 select_limit_value:
 			a_expr									{ $$ = $1; }
 			| ALL
@@ -1105,17 +1127,19 @@ alias_prefix_colon_clause:
 /*
  * table_ref is where an alias clause can be attached.
  */
-table_ref:	relation_expr opt_alias_clause opt_tablesample_clause opt_match_recognize_clause
+table_ref:	relation_expr opt_alias_clause opt_at_clause opt_tablesample_clause opt_match_recognize_clause
 				{
+					$1->at_clause = $3;
 					$1->alias = $2;
-					$1->sample = $3;
+					$1->sample = $4;
 					$1->match_recognize = $4;
 					$$ = (PGNode *) $1;
 				}
-			| alias_prefix_colon_clause relation_expr opt_tablesample_clause opt_match_recognize_clause
+			| alias_prefix_colon_clause relation_expr opt_at_clause opt_tablesample_clause opt_match_recognize_clause
                 {
+					$2->at_clause = $3;
                     $2->alias = $1;
-                    $2->sample = $3;
+                    $2->sample = $4;
                     $2->match_recognize = $4;
                     $$ = (PGNode *) $2;
                 }
