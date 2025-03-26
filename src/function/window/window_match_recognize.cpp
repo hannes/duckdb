@@ -35,13 +35,15 @@ WindowMatchRecognizeExecutor::GetGlobalState(const idx_t payload_count, const Va
 // this gets called per partition
 void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate, WindowExecutorLocalState &lstate,
                                             CollectionPtr collection) const {
+	for (idx_t i = 0; i < gstate.payload_count; i++) {
+		printf("%i\t%d\t%d\n", i, gstate.partition_mask.GetValidityEntry(i), gstate.order_mask.GetValidityEntry(i));
+	}
 
 	// we still need to resolve the mapping to inputs here
 	auto &defines_expression_list = wexpr.bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list;
 
 	// the sorted per-partition is in here:
 	collection->inputs->Print();
-
 
 	// we do our thing here and then dump the result in the global state for scanning later
 	// how do we get back the context below?? which rows belonged to this?
@@ -59,19 +61,14 @@ void WindowMatchRecognizeExecutor::EvaluateInternal(WindowExecutorGlobalState &g
 	// row index points into partition mask
 	// at the beginning of each partition a bit is set to mark new partition partition_mask_p
 
-
-
 	// all those functions only operate on a single hash group at a time but there may be multiple partitions in it
 	// partition boundaries dont' change
 
-
-
-
 	// void WindowConstantAggregatorLocalState::Sink(DataChunk &sink_chunk, DataChunk &coll_chunk, idx_t row,
 
-		// row windows into the hash group
+	// row windows into the hash group
 
-		FlatVector::Validity(result).SetAllInvalid(count);
+	FlatVector::Validity(result).SetAllInvalid(count);
 	D_ASSERT(result.GetType().id() == LogicalTypeId::STRUCT);
 	auto &struct_entries = StructVector::GetEntries(result);
 	// first entry is list of classifiers
