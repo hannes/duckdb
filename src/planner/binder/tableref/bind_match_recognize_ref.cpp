@@ -66,10 +66,13 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 		    std::move(bound_expr));
 	}
 
-	auto window_operator = make_uniq<LogicalWindow>(GenerateTableIndex());
+	auto table_index = GenerateTableIndex();
+	auto window_operator = make_uniq<LogicalWindow>(table_index);
 	window_operator->expressions.push_back(std::move(window_expression));
 	window_operator->children.push_back(std::move(child_node_plan));
 	window_operator->ResolveOperatorTypes();
+
+	bind_context.AddGenericBinding(table_index, "__match_recognize_ref", {"__match_recognize_fun"}, {return_type});
 
 	// TODO we need to stack more stuff on top of this operator
 	return make_uniq<BoundMatchRecognizeRef>(std::move(window_operator));
