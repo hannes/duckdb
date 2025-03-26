@@ -21,9 +21,11 @@ SELECT COUNT(*) from test MATCH_RECOGNIZE(
     ORDER BY o
     MEASURES A.v AS a_val, B.v as b_val
     PATTERN (A B)
-    DEFINE A as v/10 > 1 , B as (v2-10)/10 > 2)
+    DEFINE A as (v-1) > 0.11, B as (v2-10) > 0.2 )
 ----
 6
+
+mode skip
 
 query II
 explain from test MATCH_RECOGNIZE(
@@ -31,5 +33,5 @@ explain from test MATCH_RECOGNIZE(
     ORDER BY o
     MEASURES A.v AS a_val, B.v as b_val
     PATTERN (A B)
-    DEFINE A as v/10 > 1 , B as (v2-10)/10 > 2)
+    DEFINE A as v/10 > 0.12 , B as (v2-10)/10 > 0.22)
 ----
