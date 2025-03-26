@@ -1,16 +1,40 @@
 #include "duckdb/function/window/window_match_recognize.hpp"
 
 #include "duckdb/function/match_recognize.hpp"
+#include "duckdb/planner/expression_iterator.hpp"
 
 namespace duckdb {
 
 struct WindowMatchRecognizeGlobalState : WindowExecutorGlobalState {
 	WindowMatchRecognizeGlobalState(const WindowExecutor &executor_p, const idx_t payload_count_p,
 	                                const ValidityMask &partition_mask_p, const ValidityMask &order_mask_p)
-	    : WindowExecutorGlobalState(executor_p, payload_count_p, partition_mask_p, order_mask_p) {
+	    : WindowExecutorGlobalState(executor_p, payload_count_p, partition_mask_p, order_mask_p),
+	      result_vec(executor_p.wexpr.return_type, payload_count_p) {
 
-	      };
+		FlatVector::Validity(result_vec).SetAllInvalid(payload_count_p);
+		D_ASSERT(result_vec.GetType().id() == LogicalTypeId::STRUCT);
+		auto &struct_entries = StructVector::GetEntries(result_vec);
+		// first entry is list of classifiers
+		FlatVector::Validity(*struct_entries[0]).SetAllInvalid(payload_count_p);
+		FlatVector::Validity(*struct_entries[1]).SetAllInvalid(payload_count_p);
+		FlatVector::Validity(*struct_entries[2]).SetAllInvalid(payload_count_p);
+		FlatVector::Validity(*struct_entries[3]).SetAllInvalid(payload_count_p);
+	};
+
+	// TODO can we get away with putting this into the local state?
+	mutex state_lock;
+
+	Vector result_vec;
 };
+
+void UpdateColumnBindings(unique_ptr<Expression> &expr, unordered_map<column_t, column_t> &replacement_map) {
+	if (expr->GetExpressionType() == ExpressionType::BOUND_REF) {
+		auto &bound_ref = expr->Cast<BoundReferenceExpression>();
+		bound_ref.index = replacement_map[bound_ref.index];
+	}
+	ExpressionIterator::EnumerateChildren(
+	    *expr, [&](unique_ptr<Expression> &child) { UpdateColumnBindings(child, replacement_map); });
+}
 
 //===--------------------------------------------------------------------===//
 // WindowMatchRecognizeExecutor
@@ -19,10 +43,18 @@ WindowMatchRecognizeExecutor::WindowMatchRecognizeExecutor(BoundWindowExpression
                                                            WindowSharedExpressions &shared)
     : WindowExecutor(wexpr, context, shared) {
 
-	for (const auto &child : wexpr.children) {
-		// TODO remember this index, we need it for the defines evaluation
+	// RegisterCollection deduplicates child expressions - we need to update the references in the defines to its return
+	// value
+	unordered_map<column_t, column_t> replacement_map;
+	for (idx_t expr_idx = 0; expr_idx < wexpr.children.size(); expr_idx++) {
+		const auto &child = wexpr.children[expr_idx];
 		D_ASSERT(child->GetExpressionType() == ExpressionType::BOUND_REF);
-		shared.RegisterCollection(child, false);
+		auto new_index = shared.RegisterCollection(child, /* this seems to not matter for the partition_mask */ false);
+		replacement_map[expr_idx] = new_index;
+	}
+	auto &define_expressions = wexpr.bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list;
+	for (auto &define_expression : define_expressions) {
+		UpdateColumnBindings(define_expression, replacement_map);
 	}
 }
 
@@ -32,53 +64,92 @@ WindowMatchRecognizeExecutor::GetGlobalState(const idx_t payload_count, const Va
 	return make_uniq<WindowMatchRecognizeGlobalState>(*this, payload_count, partition_mask, order_mask);
 }
 
-// this gets called per partition
-void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate, WindowExecutorLocalState &lstate,
-                                            CollectionPtr collection) const {
-	for (idx_t i = 0; i < gstate.payload_count; i++) {
-		printf("%i\t%d\t%d\n", i, gstate.partition_mask.GetValidityEntry(i), gstate.order_mask.GetValidityEntry(i));
-	}
-
-	// we still need to resolve the mapping to inputs here
-	auto &defines_expression_list = wexpr.bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list;
-
-	// the sorted per-partition is in here:
-	collection->inputs->Print();
-
-	// we do our thing here and then dump the result in the global state for scanning later
-	// how do we get back the context below?? which rows belonged to this?
-	// ranges?? WindowCursor ??
+inline bool RowIsVisible(ColumnDataScanState &scan, idx_t row_idx) {
+	return (row_idx < scan.next_row_index && scan.current_row_index <= row_idx);
 }
 
-void WindowMatchRecognizeExecutor::EvaluateInternal(WindowExecutorGlobalState &gstate, WindowExecutorLocalState &lstate,
-                                                    DataChunk &eval_chunk, Vector &result, idx_t count,
-                                                    idx_t row_idx) const {
+// this gets called per partition
+void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate_p, WindowExecutorLocalState &lstate_p,
+                                            CollectionPtr collection_p) const {
 
-	// here we fill the result, but with what? this looks like a scan in principle.
+	auto &gstate = gstate_p.Cast<WindowMatchRecognizeGlobalState>();
+	lock_guard<mutex> lock(gstate.state_lock);
 
-	// we know we are within a single hash group
+	auto &input = collection_p->inputs;
 
-	// row index points into partition mask
-	// at the beginning of each partition a bit is set to mark new partition partition_mask_p
+	DataChunk scan_chunk;
+	ColumnDataScanState scan_state;
+	input->InitializeScanChunk(scan_chunk);
 
-	// all those functions only operate on a single hash group at a time but there may be multiple partitions in it
-	// partition boundaries dont' change
+	auto &defines_expression_list = wexpr.bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list;
+	ExpressionExecutor define_executor(context, defines_expression_list);
 
-	// void WindowConstantAggregatorLocalState::Sink(DataChunk &sink_chunk, DataChunk &coll_chunk, idx_t row,
-
-	// row windows into the hash group
-
-	FlatVector::Validity(result).SetAllInvalid(count);
-	D_ASSERT(result.GetType().id() == LogicalTypeId::STRUCT);
-	auto &struct_entries = StructVector::GetEntries(result);
-	// first entry is list of classifiers
-	FlatVector::Validity(*struct_entries[0]).SetAllInvalid(count);
-	FlatVector::Validity(*struct_entries[1]).SetAllInvalid(count);
-	FlatVector::Validity(*struct_entries[2]).SetAllInvalid(count);
-	FlatVector::Validity(*struct_entries[3]).SetAllInvalid(count);
-
-	for (idx_t i = 0; i < count; i++) {
+	vector<LogicalType> define_result_chunk_types;
+	for (auto &def_expr : defines_expression_list) {
+		define_result_chunk_types.push_back(def_expr->return_type);
 	}
+
+	idx_t partition_start = 0;
+	// we always start with a new partition
+	D_ASSERT(gstate.partition_mask.RowIsValid(0));
+
+	DataChunk define_input_chunk;
+	define_input_chunk.Initialize(context, define_result_chunk_types);
+
+	for (idx_t i = 1; i < gstate.payload_count; i++) {
+		if (!gstate.partition_mask.RowIsValid(i) && i + 1 < gstate.payload_count) {
+			continue;
+		}
+
+		// the partition end offset depends on whether we found a next partition or if we are at the end
+		auto partition_end = i + 1 == gstate.partition_mask.RowIsValid(i) ? i - 1 : i;
+		auto partition_size = partition_end - partition_start + 1;
+
+		// TODO figure out biggest partition size before so we don't have to re-initialize this all the time
+		DataChunk define_result_chunk;
+		define_result_chunk.Initialize(context, define_result_chunk_types, partition_size);
+
+		input->InitializeScan(scan_state); // TODO can we skip this maybe?
+		// we do one Scan() because Seek() does nothing if its already on the right chunk
+		input->Scan(scan_state, scan_chunk);
+		input->Seek(partition_start, scan_state, scan_chunk);
+
+		// we may have to slice the first chunk because the partition may start somewhere halfway into the chunk
+		auto chunk_offset = partition_start - scan_state.current_row_index;
+		scan_chunk.Slice(chunk_offset, scan_chunk.size() - chunk_offset);
+
+		define_executor.Execute(scan_chunk, define_input_chunk);
+		define_result_chunk.Append(define_input_chunk, true);
+
+		while (partition_end <= scan_state.next_row_index) {
+			if (!input->Scan(scan_state, scan_chunk)) {
+				// we need to get out here because otherwise the check below goes wrong
+				break;
+			}
+			// we may have too many rows, so slice again
+			if (scan_state.next_row_index > partition_end) {
+				scan_chunk.Slice(0, scan_state.next_row_index - partition_end); // TODO verify this very complex math
+			}
+
+			define_executor.Execute(scan_chunk, define_input_chunk);
+			define_result_chunk.Append(define_input_chunk, true);
+		}
+
+		define_result_chunk.Print();
+
+		// TODO state machine stuff, update result_vec
+
+		partition_start = i;
+	}
+}
+
+// this should actually be it yay!
+void WindowMatchRecognizeExecutor::EvaluateInternal(WindowExecutorGlobalState &gstate_p,
+                                                    WindowExecutorLocalState &lstate_p, DataChunk &eval_chunk_p,
+                                                    Vector &result_p, idx_t count_p, idx_t row_idx_p) const {
+	auto &gstate = gstate_p.Cast<WindowMatchRecognizeGlobalState>();
+	lock_guard<mutex> lock(gstate.state_lock);
+	result_p.Slice(gstate.result_vec, row_idx_p, row_idx_p + count_p);
 }
 
 } // namespace duckdb

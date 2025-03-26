@@ -5,17 +5,20 @@
 #include "duckdb/function/match_recognize.hpp"
 #include "duckdb/planner/expression/bound_window_expression.hpp"
 #include "duckdb/planner/tableref/bound_match_recognize.hpp"
+#include "duckdb/planner/expression/bound_reference_expression.hpp"
 
 #include "duckdb/planner/expression_iterator.hpp"
 
 namespace duckdb {
 
-void ExtractColumnBindings(Expression &expr, vector<unique_ptr<Expression>> &bindings) {
-	if (expr.GetExpressionType() == ExpressionType::BOUND_COLUMN_REF) {
-		auto &bound_ref = expr.Cast<BoundColumnRefExpression>();
+void ExtractColumnBindings(unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bindings) {
+	if (expr->GetExpressionType() == ExpressionType::BOUND_COLUMN_REF) {
+		auto &bound_ref = expr->Cast<BoundColumnRefExpression>();
 		bindings.push_back(bound_ref.Copy());
+		expr = make_uniq_base<Expression, BoundReferenceExpression>(bound_ref.return_type, bindings.size() - 1);
 	}
-	ExpressionIterator::EnumerateChildren(expr, [&](Expression &child) { ExtractColumnBindings(child, bindings); });
+	ExpressionIterator::EnumerateChildren(
+	    *expr, [&](unique_ptr<Expression> &child) { ExtractColumnBindings(child, bindings); });
 }
 
 unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
@@ -57,9 +60,10 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	// we should hand over the **bound** expressions
 	for (auto &expr : ref.config->defines_expression_list) {
 		auto bound_expr = expression_binder.Bind(expr);
+
+		ExtractColumnBindings(bound_expr, window_expression->children);
 		window_expression->bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list.emplace_back(
-		    bound_expr->Copy());
-		ExtractColumnBindings(*bound_expr, window_expression->children);
+		    std::move(bound_expr));
 	}
 
 	auto window_operator = make_uniq<LogicalWindow>(GenerateTableIndex());
