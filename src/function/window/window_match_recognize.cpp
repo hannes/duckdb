@@ -133,21 +133,31 @@ void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate_p,
 	DataChunk define_result_chunk;
 	define_result_chunk.Initialize(context, define_result_chunk_types, gstate.payload_count);
 
-	for (idx_t i = 1; i < gstate.payload_count; i++) {
-		if (!gstate.partition_mask.RowIsValid(i) && i + 1 < gstate.payload_count) {
+	for (idx_t payload_idx = 1; payload_idx < gstate.payload_count; payload_idx++) {
+		if (!gstate.partition_mask.RowIsValid(payload_idx) && payload_idx + 1 < gstate.payload_count) {
 			continue;
 		}
 		define_result_chunk.SetCardinality(0);
 
 		// the partition end offset depends on whether we found a next partition or if we are at the end
-		auto partition_end = i + 1 == gstate.partition_mask.RowIsValid(i) ? i - 1 : i;
+		auto partition_end =
+		    payload_idx + 1 == gstate.partition_mask.RowIsValid(payload_idx) ? payload_idx - 1 : payload_idx;
 		FetchPartitionAndExecute(context, *collection_p->inputs, define_executor, define_result_chunk, partition_start,
 		                         partition_end);
-		define_result_chunk.Print();
 
-		// TODO state machine stuff, update result_vec
+		// TODO state machine stuff
 
-		partition_start = i;
+		// set some dummy values to check result projection
+		for (idx_t partition_idx = partition_start; partition_idx <= partition_end; partition_idx++) {
+			FlatVector::Validity(gstate.result_vec).SetValid(partition_idx);
+			auto &struct_entries = StructVector::GetEntries(gstate.result_vec);
+			// first entry is list of classifiers
+			struct_entries[1]->SetValue(partition_idx, Value::BOOLEAN(true));
+			struct_entries[2]->SetValue(partition_idx, Value::INTEGER(partition_start));
+			struct_entries[3]->SetValue(partition_idx, Value::INTEGER(partition_idx));
+		}
+
+		partition_start = payload_idx;
 	}
 }
 
