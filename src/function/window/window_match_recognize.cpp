@@ -68,18 +68,54 @@ inline bool RowIsVisible(ColumnDataScanState &scan, idx_t row_idx) {
 	return (row_idx < scan.next_row_index && scan.current_row_index <= row_idx);
 }
 
+static void FetchPartitionAndExecute(ClientContext &context, ColumnDataCollection &input, ExpressionExecutor &executor,
+                                     DataChunk &result_chunk, idx_t partition_start, idx_t partition_end) {
+	ColumnDataScanState scan_state;
+	DataChunk scan_chunk;
+	DataChunk execute_result_chunk;
+
+	// TODO cache those allocations
+	input.InitializeScanChunk(scan_chunk);
+	execute_result_chunk.Initialize(context, result_chunk.GetTypes());
+
+	auto partition_size = partition_end - partition_start + 1;
+
+	D_ASSERT(result_chunk.GetCapacity() <= partition_size);
+
+	input.InitializeScan(scan_state);
+	// we do one Scan() because Seek() does nothing if its already on the right chunk
+	input.Scan(scan_state, scan_chunk);
+	input.Seek(partition_start, scan_state, scan_chunk);
+
+	// we may have to slice the first chunk because the partition may start somewhere halfway into the chunk
+	auto chunk_offset = partition_start - scan_state.current_row_index;
+	scan_chunk.Slice(chunk_offset, scan_chunk.size() - chunk_offset);
+
+	executor.Execute(scan_chunk, execute_result_chunk);
+	result_chunk.Append(execute_result_chunk, false);
+
+	while (partition_end <= scan_state.next_row_index) {
+		if (!input.Scan(scan_state, scan_chunk)) {
+			// we need to get out here because otherwise the check below goes wrong
+			break;
+		}
+		// we may have too many rows, so slice again
+		if (scan_state.next_row_index > partition_end) {
+			scan_chunk.Slice(0, scan_state.next_row_index - partition_end); // TODO verify this very complex math
+		}
+
+		executor.Execute(scan_chunk, execute_result_chunk);
+		result_chunk.Append(execute_result_chunk, false);
+	}
+	D_ASSERT(result_chunk.size() == partition_size);
+}
+
 // this gets called per partition
 void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate_p, WindowExecutorLocalState &lstate_p,
                                             CollectionPtr collection_p) const {
 
 	auto &gstate = gstate_p.Cast<WindowMatchRecognizeGlobalState>();
 	lock_guard<mutex> lock(gstate.state_lock);
-
-	auto &input = collection_p->inputs;
-
-	DataChunk scan_chunk;
-	ColumnDataScanState scan_state;
-	input->InitializeScanChunk(scan_chunk);
 
 	auto &defines_expression_list = wexpr.bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list;
 	ExpressionExecutor define_executor(context, defines_expression_list);
@@ -93,48 +129,20 @@ void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate_p,
 	// we always start with a new partition
 	D_ASSERT(gstate.partition_mask.RowIsValid(0));
 
-	DataChunk define_input_chunk;
-	define_input_chunk.Initialize(context, define_result_chunk_types);
+	// TODO figure out biggest partition size before, payload count is upper bound but overkill
+	DataChunk define_result_chunk;
+	define_result_chunk.Initialize(context, define_result_chunk_types, gstate.payload_count);
 
 	for (idx_t i = 1; i < gstate.payload_count; i++) {
 		if (!gstate.partition_mask.RowIsValid(i) && i + 1 < gstate.payload_count) {
 			continue;
 		}
+		define_result_chunk.SetCardinality(0);
 
 		// the partition end offset depends on whether we found a next partition or if we are at the end
 		auto partition_end = i + 1 == gstate.partition_mask.RowIsValid(i) ? i - 1 : i;
-		auto partition_size = partition_end - partition_start + 1;
-
-		// TODO figure out biggest partition size before so we don't have to re-initialize this all the time
-		DataChunk define_result_chunk;
-		define_result_chunk.Initialize(context, define_result_chunk_types, partition_size);
-
-		input->InitializeScan(scan_state); // TODO can we skip this maybe?
-		// we do one Scan() because Seek() does nothing if its already on the right chunk
-		input->Scan(scan_state, scan_chunk);
-		input->Seek(partition_start, scan_state, scan_chunk);
-
-		// we may have to slice the first chunk because the partition may start somewhere halfway into the chunk
-		auto chunk_offset = partition_start - scan_state.current_row_index;
-		scan_chunk.Slice(chunk_offset, scan_chunk.size() - chunk_offset);
-
-		define_executor.Execute(scan_chunk, define_input_chunk);
-		define_result_chunk.Append(define_input_chunk, true);
-
-		while (partition_end <= scan_state.next_row_index) {
-			if (!input->Scan(scan_state, scan_chunk)) {
-				// we need to get out here because otherwise the check below goes wrong
-				break;
-			}
-			// we may have too many rows, so slice again
-			if (scan_state.next_row_index > partition_end) {
-				scan_chunk.Slice(0, scan_state.next_row_index - partition_end); // TODO verify this very complex math
-			}
-
-			define_executor.Execute(scan_chunk, define_input_chunk);
-			define_result_chunk.Append(define_input_chunk, true);
-		}
-
+		FetchPartitionAndExecute(context, *collection_p->inputs, define_executor, define_result_chunk, partition_start,
+		                         partition_end);
 		define_result_chunk.Print();
 
 		// TODO state machine stuff, update result_vec
