@@ -2334,6 +2334,7 @@ typedef struct PGMatchRecognizeStmt {
 	PGList *measures_clause;
 	PGList *pattern_clause;
 	PGList *defines_clause;
+	PGAlias *alias;
 	int location;
 } PGMatchRecognizeStmt;
 
