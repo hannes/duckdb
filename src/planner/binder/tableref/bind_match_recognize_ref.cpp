@@ -72,7 +72,19 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	window_operator->children.push_back(std::move(child_node_plan));
 	window_operator->ResolveOperatorTypes();
 
-	bind_context.AddGenericBinding(table_index, "__match_recognize_ref", {"__match_recognize_fun"}, {return_type});
+	string mr_alias;
+	if (ref.alias.empty()) {
+		auto index = unnamed_subquery_index++;
+		mr_alias = "unnamed_mr"; //"__match_recognize_ref"
+		if (index > 1) {
+			mr_alias += to_string(index);
+		}
+	} else {
+		mr_alias = ref.alias;
+	}
+
+	// TODO: add columns from input ref to this table
+	bind_context.AddGenericBinding(table_index, mr_alias, {"__match_recognize_fun"}, {return_type});
 
 	// TODO we need to stack more stuff on top of this operator
 	return make_uniq<BoundMatchRecognizeRef>(std::move(window_operator));
