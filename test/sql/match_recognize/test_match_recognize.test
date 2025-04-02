@@ -21,8 +21,26 @@ SELECT p, o, __match_recognize_fun.match_start, __match_recognize_fun.match_end 
     ORDER BY o
     MEASURES A.v AS a_val, B.v as b_val
     PATTERN (A B)
-    DEFINE A as (v-1) > 0.11, B as (v2-10) > 0.2 )
-    ORDER BY p,o
+    DEFINE A as (v-1) > 0.11, B as (v2-10) > 0.2
+)
+ORDER BY p,o
+----
+1	1	0	0
+1	2	0	1
+1	3	0	2
+2	1	0	0
+2	2	0	1
+2	3	0	2
+
+query IIII
+SELECT p, o, s.__match_recognize_fun.match_start, s.__match_recognize_fun.match_end from test AS t MATCH_RECOGNIZE(
+    PARTITION BY p
+    ORDER BY o
+    MEASURES A.v AS a_val, B.v as b_val
+    PATTERN (A B)
+    DEFINE A as (v-1) > 0.11, B as (v2-10) > 0.2
+) AS s
+ORDER BY p,o
 ----
 1	1	0	0
 1	2	0	1
