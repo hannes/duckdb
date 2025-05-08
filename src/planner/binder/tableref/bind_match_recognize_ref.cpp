@@ -103,7 +103,8 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	subquery->from_table = make_uniq<BoundMatchRecognizeRef>(std::move(window_operator));
 
 	// add the binding for the subquery
-	idx_t bind_index = subquery->GetRootIndex();
+	idx_t bind_index = GenerateTableIndex();
+	subquery->projection_index = bind_index;
 	vector<string> names;
 	vector<LogicalType> types;
 	child_binder->bind_context.GetTypesAndNames(names, types);
