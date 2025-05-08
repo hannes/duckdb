@@ -32,6 +32,9 @@ public:
 	unique_ptr<TableRef> input;
 	unique_ptr<MatchRecognizeConfig> config;
 
+private:
+	MatchRecognizeRef();
+
 public:
 	MatchRecognizeRef(unique_ptr<TableRef> input_p, unique_ptr<MatchRecognizeConfig> config_p)
 	    : TableRef(TableReferenceType::MATCH_RECOGNIZE), input(std::move(input_p)), config(std::move(config_p)) {
@@ -42,10 +45,10 @@ public:
 	// bool Equals(const TableRef &other_p) const override;
 	//
 	unique_ptr<TableRef> Copy() override;
-	//
-	// //! Deserializes a blob back into a ExpressionListRef
-	// void Serialize(Serializer &serializer) const override;
-	// static unique_ptr<TableRef> Deserialize(Deserializer &source);
+
+	//! Deserializes a blob back into a MatchRecognizeRef
+	void Serialize(Serializer &serializer) const override;
+	static unique_ptr<TableRef> Deserialize(Deserializer &source);
 };
 
 } // namespace duckdb
