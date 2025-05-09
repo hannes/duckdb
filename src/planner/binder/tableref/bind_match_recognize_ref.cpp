@@ -23,11 +23,16 @@ void ExtractColumnBindings(unique_ptr<Expression> &expr, vector<unique_ptr<Expre
 
 unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 
-	auto child_node = Bind(*ref.input);
+	// we bind everything regarding match recognize in a child binder such that these bindings (e.g. of the input table)
+	// are hidden, and we can add a new binding for the input columns and the measures columns to the match recognize
+	// alias.
+	auto child_binder = Binder::CreateBinder(context, this);
+	auto child_node = child_binder->Bind(*ref.input);
 
 	auto &config = DBConfig::GetConfig(context);
-	ExpressionBinder expression_binder(*this, context);
-	auto child_node_plan = CreatePlan(*child_node);
+	// the expression_binder needs the child_binder as its parent to reference to columns of the input table
+	ExpressionBinder expression_binder(*child_binder, context);
+	auto child_node_plan = child_binder->CreatePlan(*child_node);
 
 	// window
 	// filter
@@ -72,10 +77,42 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	window_operator->children.push_back(std::move(child_node_plan));
 	window_operator->ResolveOperatorTypes();
 
-	bind_context.AddGenericBinding(table_index, "__match_recognize_ref", {"__match_recognize_fun"}, {return_type});
+	// add the measures columns or whatever we need to our internal match recognize table
+	child_binder->bind_context.AddGenericBinding(table_index, "__match_recognize_ref", {"__match_recognize_fun"},
+	                                             {return_type});
+
+	string mr_alias;
+	if (ref.alias.empty()) {
+		auto index = unnamed_subquery_index++;
+		mr_alias = "unnamed_mr"; //"__match_recognize_ref"
+		if (index > 1) {
+			mr_alias += to_string(index);
+		}
+	} else {
+		mr_alias = ref.alias;
+	}
+
+	// put the match recognize tables into a subquery to hide the original data
+	unique_ptr<BoundSelectNode> subquery = make_uniq<BoundSelectNode>();
+	auto bindings = window_operator->GetColumnBindings();
+
+	for (idx_t i = 0; i < bindings.size(); i++) {
+		auto col = make_uniq<BoundColumnRefExpression>(window_operator->types[i], bindings[i]);
+		subquery->select_list.push_back(std::move(col));
+	}
+	subquery->from_table = make_uniq<BoundMatchRecognizeRef>(std::move(window_operator));
+
+	// add the binding for the subquery
+	idx_t bind_index = GenerateTableIndex();
+	subquery->projection_index = bind_index;
+	vector<string> names;
+	vector<LogicalType> types;
+	child_binder->bind_context.GetTypesAndNames(names, types);
+	bind_context.AddGenericBinding(bind_index, mr_alias, names, types);
 
 	// TODO we need to stack more stuff on top of this operator
-	return make_uniq<BoundMatchRecognizeRef>(std::move(window_operator));
+
+	return make_uniq<BoundSubqueryRef>(std::move(child_binder), std::move(subquery));
 }
 
 } // namespace duckdb

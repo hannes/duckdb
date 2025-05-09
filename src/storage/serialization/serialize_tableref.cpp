@@ -39,6 +39,9 @@ unique_ptr<TableRef> TableRef::Deserialize(Deserializer &deserializer) {
 	case TableReferenceType::JOIN:
 		result = JoinRef::Deserialize(deserializer);
 		break;
+	case TableReferenceType::MATCH_RECOGNIZE:
+		result = MatchRecognizeRef::Deserialize(deserializer);
+		break;
 	case TableReferenceType::PIVOT:
 		result = PivotRef::Deserialize(deserializer);
 		break;
@@ -150,6 +153,15 @@ unique_ptr<TableRef> JoinRef::Deserialize(Deserializer &deserializer) {
 	deserializer.ReadPropertyWithDefault<vector<string>>(205, "using_columns", result->using_columns);
 	deserializer.ReadPropertyWithDefault<bool>(206, "delim_flipped", result->delim_flipped);
 	deserializer.ReadPropertyWithDefault<vector<unique_ptr<ParsedExpression>>>(207, "duplicate_eliminated_columns", result->duplicate_eliminated_columns);
+	return std::move(result);
+}
+
+void MatchRecognizeRef::Serialize(Serializer &serializer) const {
+	TableRef::Serialize(serializer);
+}
+
+unique_ptr<TableRef> MatchRecognizeRef::Deserialize(Deserializer &deserializer) {
+	auto result = duckdb::unique_ptr<MatchRecognizeRef>(new MatchRecognizeRef());
 	return std::move(result);
 }
 

@@ -828,9 +828,9 @@ defines_el:	ColLabelOrString AS a_expr
 
 
 match_recognize_clause:
-        MATCH_RECOGNIZE '(' opt_partition_clause opt_sort_clause MEASURES measures_list PATTERN '(' pattern_list ')' DEFINE defines_list ')'
+        MATCH_RECOGNIZE '(' opt_partition_clause opt_sort_clause MEASURES measures_list PATTERN '(' pattern_list ')' DEFINE defines_list ')' opt_alias_clause
             {
-        $$ = makeMatchRecognizeClause($3, $4, $6, $9, $12, @1);
+        $$ = makeMatchRecognizeClause($3, $4, $6, $9, $12, $14, @1);
     }
 ;
 

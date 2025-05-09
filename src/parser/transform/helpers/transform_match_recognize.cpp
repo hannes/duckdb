@@ -15,7 +15,7 @@ unique_ptr<TableRef> Transformer::TransformMatchRecognize(unique_ptr<TableRef> t
 
 	// optional ordering
 	if (match_recognize_stmt->order_clause) {
-		D_ASSERT(TransformOrderBy(match_recognize_stmt->order_clause, match_recognize_config->order_by_expressions));
+		TransformOrderBy(match_recognize_stmt->order_clause, match_recognize_config->order_by_expressions);
 	}
 
 	// measures, I guess this is required?
@@ -28,7 +28,13 @@ unique_ptr<TableRef> Transformer::TransformMatchRecognize(unique_ptr<TableRef> t
 	D_ASSERT(match_recognize_stmt->defines_clause);
 	TransformExpressionList(*match_recognize_stmt->defines_clause, match_recognize_config->defines_expression_list);
 
-	return make_uniq<MatchRecognizeRef>(std::move(table), std::move(match_recognize_config));
+	auto result = make_uniq<MatchRecognizeRef>(std::move(table), std::move(match_recognize_config));
+
+	if (match_recognize_stmt->alias) {
+		result->alias = TransformAlias(match_recognize_stmt->alias, result->column_name_alias);
+	}
+
+	return std::move(result);
 }
 
 } // namespace duckdb
