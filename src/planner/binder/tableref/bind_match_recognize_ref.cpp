@@ -8,6 +8,12 @@
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 
 #include "duckdb/planner/expression_iterator.hpp"
+#include "duckdb/planner/expression/bound_constant_expression.hpp"
+#include "duckdb/function/function_list.hpp"
+#include "duckdb/function/scalar/nested_functions.hpp"
+#include "duckdb/planner/expression/bound_function_expression.hpp"
+#include "duckdb/function/cast/cast_function_set.hpp"
+#include "duckdb/planner/expression/bound_cast_expression.hpp"
 
 #include "duckdb/parser/expression/pattern_expression.hpp"
 
@@ -145,6 +151,19 @@ void ExtractColumnBindings(unique_ptr<Expression> &expr, vector<unique_ptr<Expre
 	    *expr, [&](unique_ptr<Expression> &child) { ExtractColumnBindings(child, bindings); });
 }
 
+unique_ptr<Expression> CreateBoundStructExtract2(ClientContext &context, unique_ptr<Expression> expr, string key) {
+	vector<unique_ptr<Expression>> arguments;
+	arguments.push_back(std::move(expr));
+	arguments.push_back(make_uniq<BoundConstantExpression>(Value(key)));
+	auto extract_function = GetKeyExtractFunction();
+	auto bind_info = extract_function.bind(context, extract_function, arguments);
+	auto return_type = extract_function.return_type;
+	auto result = make_uniq<BoundFunctionExpression>(return_type, std::move(extract_function), std::move(arguments),
+	                                                 std::move(bind_info));
+	result->SetAlias(std::move(key));
+	return std::move(result);
+}
+
 unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 
 	// we bind everything regarding match recognize in a child binder such that these bindings (e.g. of the input table)
@@ -215,6 +234,8 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	child_binder->bind_context.AddGenericBinding(table_index, "__match_recognize_ref", {"__match_recognize_fun"},
 	                                             {return_type});
 
+	// TODO we need to stack more stuff on top of this operator
+
 	string mr_alias;
 	if (ref.alias.empty()) {
 		auto index = unnamed_subquery_index++;
@@ -227,6 +248,7 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	}
 
 	// put the match recognize tables into a subquery to hide the original data
+	// SELECT * FROM (input_table, window_operator) AS mr_alias
 	unique_ptr<BoundSelectNode> subquery = make_uniq<BoundSelectNode>();
 	auto bindings = window_operator->GetColumnBindings();
 
@@ -236,6 +258,23 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	}
 	subquery->from_table = make_uniq<BoundMatchRecognizeRef>(std::move(window_operator));
 
+	// filter: add WHERE t.__match_recognize_fun.complete to only extract complete matches
+	// t.__match_recognize_fun
+	auto col_ref = make_uniq<BoundColumnRefExpression>(return_type, bindings[bindings.size()-1]);
+    auto col_ref_be = make_uniq<BoundExpression>(std::move(col_ref));
+	unique_ptr<Expression> col_ref_expr = std::move(col_ref_be->expr);
+
+	// Struct extract: struct_extract(t.__match_recognize_fun, "complete")
+	auto struct_extract_expr = CreateBoundStructExtract2(context, std::move(col_ref_expr), "complete");
+
+	// CAST(struct_extract(t.__match_recognize_fun, "complete") AS boolean)
+	// this feels very unnecessary as we know complete has type boolean but duckdb adds this cast as well if I actually add WHERE t.__match_recognize_fun.complete
+	GetCastFunctionInput get_input(context);
+	BoundCastInfo cast_function = CastFunctionSet::Get(context).GetCastFunction(struct_extract_expr->return_type, LogicalType::BOOLEAN, get_input);
+	unique_ptr<BoundCastExpression> cast_expr = make_uniq<BoundCastExpression>(std::move(struct_extract_expr), LogicalType::BOOLEAN, std::move(cast_function));
+	subquery->where_clause = std::move(cast_expr);
+	subquery->where_clause = std::move(struct_extract_expr);
+
 	// add the binding for the subquery
 	idx_t bind_index = GenerateTableIndex();
 	subquery->projection_index = bind_index;
@@ -243,8 +282,6 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	vector<LogicalType> types;
 	child_binder->bind_context.GetTypesAndNames(names, types);
 	bind_context.AddGenericBinding(bind_index, mr_alias, names, types);
-
-	// TODO we need to stack more stuff on top of this operator
 
 	return make_uniq<BoundSubqueryRef>(std::move(child_binder), std::move(subquery));
 }
