@@ -182,11 +182,12 @@ makeSampleOptions(PGNode *sample_size, char *method, int *seed, int location) {
 }
 
 
-static PGNode *makeMatchRecognizeClause(PGList *partition_clause,PGList *order_clause, PGList *measures_clause, PGList *pattern_clause, PGList *defines_clause, PGAlias *alias, int location) {
+static PGNode *makeMatchRecognizeClause(PGList *partition_clause,PGList *order_clause, PGList *measures_clause, PGMatchRecognizeRowsPerMatch rows_per_match, PGList *pattern_clause, PGList *defines_clause, PGAlias *alias, int location) {
 	PGMatchRecognizeStmt *n = makeNode(PGMatchRecognizeStmt);
 	n->partition_clause = partition_clause;
     n->order_clause = order_clause;
     n->measures_clause = measures_clause;
+	n->rows_per_match = rows_per_match;
     n->pattern_clause = pattern_clause;
     n->defines_clause = defines_clause;
     n->alias = alias;

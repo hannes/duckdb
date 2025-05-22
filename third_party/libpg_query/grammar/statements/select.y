@@ -828,12 +828,17 @@ defines_el:	ColLabelOrString AS a_expr
 
 
 match_recognize_clause:
-        MATCH_RECOGNIZE '(' opt_partition_clause opt_sort_clause MEASURES measures_list PATTERN '(' pattern_list ')' DEFINE defines_list ')' opt_alias_clause
+    MATCH_RECOGNIZE '(' opt_partition_clause opt_sort_clause MEASURES measures_list opt_rows_per_match PATTERN '(' pattern_list ')' DEFINE defines_list ')' opt_alias_clause
             {
-        $$ = makeMatchRecognizeClause($3, $4, $6, $9, $12, $14, @1);
+        $$ = makeMatchRecognizeClause($3, $4, $6, $7, $10, $13, $15, @1);
     }
 ;
 
+opt_rows_per_match:
+    ONE ROW PER MATCH { $$ = PGMatchRecognizeRowsPerMatchOneRow; }
+    | ALL ROWS PER MATCH { $$ = PGMatchRecognizeRowsPerMatchAllRows; }
+    | /*EMPTY*/ { $$ = PGMatchRecognizeRowsPerMatchDefault; }
+    ;
 
 opt_match_recognize_clause:
 			match_recognize_clause			{ $$ = $1; }
