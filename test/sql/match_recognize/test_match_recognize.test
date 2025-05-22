@@ -21,6 +21,8 @@ FROM test MATCH_RECOGNIZE(
     PARTITION BY p
     ORDER BY o
     MEASURES A.v AS a_val, B.v as b_val
+    ALL ROWS PER MATCH
+    AFTER MATCH SKIP TO LAST B
     PATTERN (A B)
     DEFINE A as (v-1) > 0.11, B as (v2-10) > 0.2
 )
@@ -39,6 +41,8 @@ FROM test AS t MATCH_RECOGNIZE(
     PARTITION BY p
     ORDER BY o
     MEASURES A.v AS a_val, B.v as b_val
+    ONE ROW PER MATCH
+    AFTER MATCH SKIP TO NEXT ROW
     PATTERN (A B)
     DEFINE A as (v-1) > 0.11, B as (v2-10) > 0.2
 ) AS s
