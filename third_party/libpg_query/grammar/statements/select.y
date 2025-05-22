@@ -828,11 +828,16 @@ defines_el:	ColLabelOrString AS a_expr
 
 
 match_recognize_clause:
-    MATCH_RECOGNIZE '(' opt_partition_clause opt_sort_clause MEASURES measures_list opt_rows_per_match PATTERN '(' pattern_list ')' DEFINE defines_list ')' opt_alias_clause
+    MATCH_RECOGNIZE '(' opt_partition_clause opt_sort_clause MEASURES measures_list opt_rows_per_match opt_after_match PATTERN '(' pattern_list ')' DEFINE defines_list ')' opt_alias_clause
             {
-        $$ = makeMatchRecognizeClause($3, $4, $6, $7, $10, $13, $15, @1);
+        $$ = makeMatchRecognizeClause($3, $4, $6, $7, $8, $11, $14, $16, @1);
     }
 ;
+
+opt_match_recognize_clause:
+			match_recognize_clause			{ $$ = $1; }
+			| /*EMPTY*/					{ $$ = NULL; }
+		;
 
 opt_rows_per_match:
     ONE ROW PER MATCH { $$ = PGMatchRecognizeRowsPerMatchOneRow; }
@@ -840,15 +845,19 @@ opt_rows_per_match:
     | /*EMPTY*/ { $$ = PGMatchRecognizeRowsPerMatchDefault; }
     ;
 
-opt_match_recognize_clause:
-			match_recognize_clause			{ $$ = $1; }
-			| /*EMPTY*/					{ $$ = NULL; }
-		;
+opt_after_match:
+    AFTER MATCH SKIP TO NEXT ROW { $$ = makeMatchRecognizeAfterMatchClause(PGMatchRecognizeAfterMatchNextRow, NULL, @1); }
+    | AFTER MATCH SKIP PAST LAST_P ROW { $$ = makeMatchRecognizeAfterMatchClause(PGMatchRecognizeAfterMatchLastRow, NULL, @1); }
+    | AFTER MATCH SKIP TO FIRST_P ColLabelOrString { $$ = makeMatchRecognizeAfterMatchClause(PGMatchRecognizeAfterMatchFirstVar, makeString($6), @1); }
+    | AFTER MATCH SKIP TO LAST_P ColLabelOrString { $$ = makeMatchRecognizeAfterMatchClause(PGMatchRecognizeAfterMatchLastVar, makeString($6), @1); }
+    /* | AFTER MATCH SKIP TO ColLabelOrString { $$ = makeMatchRecognizeAfterMatchClause(PGMatchRecognizeAfterMatchLastVar, makeString($5), @1); } */
+    | /*EMPTY*/ { $$ = makeMatchRecognizeAfterMatchClause(PGMatchRecognizeAfterMatchDefault, NULL, @$); }
+    ;
+
 opt_repeatable_clause:
 			REPEATABLE '(' ICONST ')'	{ $$ = $3; }
 			| /*EMPTY*/					{ $$ = -1; }
 		;
-
 
 at_unit:
 	TIMESTAMP { $$ = (char*) "TIMESTAMP"; }
