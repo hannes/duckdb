@@ -16,11 +16,18 @@
 
 namespace duckdb {
 
+enum class MatchRecognizeRows : uint8_t {
+	MATCH_RECOGNIZE_ROWS_DEFAULT = 1, /* no option specified */
+	MATCH_RECOGNIZE_ROWS_ONE = 2,  /* ONE ROW PER MATCH */
+	MATCH_RECOGNIZE_ROWS_ALL = 3    /* ALL ROWS PER MATCH */
+};
+
 struct MatchRecognizeConfig {
 	vector<unique_ptr<ParsedExpression>> partition_expressions;
 	vector<OrderByNode> order_by_expressions;
 	vector<unique_ptr<ParsedExpression>> measures_expression_list;
 	vector<unique_ptr<ParsedExpression>> defines_expression_list;
+	MatchRecognizeRows rows_per_match;
 	// TODO pattern
 };
 

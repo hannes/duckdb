@@ -22,6 +22,19 @@ unique_ptr<TableRef> Transformer::TransformMatchRecognize(unique_ptr<TableRef> t
 	D_ASSERT(match_recognize_stmt->measures_clause);
 	TransformExpressionList(*match_recognize_stmt->measures_clause, match_recognize_config->measures_expression_list);
 
+	// rows per match
+	if (match_recognize_stmt->rows_per_match == duckdb_libpgquery::PGMatchRecognizeRowsPerMatchDefault) {
+#ifdef DUCKDB_ALTERNATIVE_VERIFY
+			match_recognize_config->rows_per_match = MatchRecognizeRows::MATCH_RECOGNIZE_ROWS_ONE;
+#else
+			match_recognize_config->rows_per_match = MatchRecognizeRows::MATCH_RECOGNIZE_ROWS_DEFAULT;
+#endif
+	} else if (match_recognize_stmt->rows_per_match == duckdb_libpgquery::PGMatchRecognizeRowsPerMatchOneRow) {
+		match_recognize_config->rows_per_match = MatchRecognizeRows::MATCH_RECOGNIZE_ROWS_ONE;
+	} else if (match_recognize_stmt->rows_per_match == duckdb_libpgquery::PGMatchRecognizeRowsPerMatchAllRows) {
+		match_recognize_config->rows_per_match = MatchRecognizeRows::MATCH_RECOGNIZE_ROWS_ALL;
+	}
+
 	// TODO pattern?!
 
 	// defines, this is required?

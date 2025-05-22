@@ -2248,10 +2248,19 @@ typedef struct PGCommentOnStmt {
  *      MATCH_RECOGNIZE statement
  * ----------------------
  */
+
+typedef enum PGMatchRecognizeRowsPerMatch
+{
+	PGMatchRecognizeRowsPerMatchDefault,	/* no option specified  */
+	PGMatchRecognizeRowsPerMatchOneRow,		/* ONE ROW PER MATCH */
+	PGMatchRecognizeRowsPerMatchAllRows		/* ALL ROWS PER MATCH */
+} PGMatchRecognizeRowsPerMatch;
+
 typedef struct PGMatchRecognizeStmt {
 	PGList *partition_clause;
 	PGList *order_clause;
 	PGList *measures_clause;
+	PGMatchRecognizeRowsPerMatch rows_per_match;
 	PGList *pattern_clause;
 	PGList *defines_clause;
 	PGAlias *alias;
