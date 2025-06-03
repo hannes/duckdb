@@ -94,6 +94,8 @@
 %type <node>	match_recognize_clause opt_match_recognize_clause
 %type <list>	measures_list defines_list pattern_list pattern_el
 %type <target>	measures_el defines_el
+%type <rows_per_match> opt_rows_per_match
+%type <after_match_clause> opt_after_match
 
 
 %type <target>	target_el

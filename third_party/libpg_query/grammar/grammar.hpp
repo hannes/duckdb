@@ -185,7 +185,8 @@ static PGNode *makeIntervalNode(PGNode *arg, int location, PGList *typmods);
 static PGNode *makeSampleSize(PGNode *sample_size, bool is_percentage);
 static PGNode *makeSampleOptions(PGNode *sample_size, char *method, int *seed, int location);
 
-static PGNode *makeMatchRecognizeClause(PGList *partition_clause,PGList *order_clause, PGList *measures_clause, PGList *pattern_clause, PGList *defines_clause, PGAlias *alias, int location);
+static PGNode *makeMatchRecognizeClause(PGList *partition_clause,PGList *order_clause, PGList *measures_clause, PGMatchRecognizeRowsPerMatch rows_per_match, PGMatchRecognizeAfterMatchClause *after_match_clause, PGList *pattern_clause, PGList *defines_clause, PGAlias *alias, int location);
+static PGMatchRecognizeAfterMatchClause *makeMatchRecognizeAfterMatchClause(PGMatchRecognizeAfterMatch after_match, PGValue *variable, int location);
 
 
 static PGNode *makeIntConst(int val, int location);

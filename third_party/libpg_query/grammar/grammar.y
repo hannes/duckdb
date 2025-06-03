@@ -40,6 +40,8 @@
 	PGRangeVar			*range;
 	PGIntoClause			*into;
 	PGCTEMaterialize			ctematerialize;
+	PGMatchRecognizeRowsPerMatch			rows_per_match;
+	PGMatchRecognizeAfterMatchClause			*after_match_clause;
 	PGWithClause			*with;
 	PGInferClause			*infer;
 	PGOnConflictClause	*onconflict;

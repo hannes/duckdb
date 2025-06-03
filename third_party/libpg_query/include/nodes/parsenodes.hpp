@@ -2248,10 +2248,35 @@ typedef struct PGCommentOnStmt {
  *      MATCH_RECOGNIZE statement
  * ----------------------
  */
+
+typedef enum PGMatchRecognizeRowsPerMatch
+{
+	PGMatchRecognizeRowsPerMatchDefault,	/* no option specified  */
+	PGMatchRecognizeRowsPerMatchOneRow,		/* ONE ROW PER MATCH */
+	PGMatchRecognizeRowsPerMatchAllRows		/* ALL ROWS PER MATCH */
+} PGMatchRecognizeRowsPerMatch;
+
+typedef enum PGMatchRecognizeAfterMatch
+{
+	PGMatchRecognizeAfterMatchDefault,	/* no option specified  */
+	PGMatchRecognizeAfterMatchNextRow,	/* AFTER MATCH SKIP TO NEXT ROW */
+	PGMatchRecognizeAfterMatchLastRow,	/* AFTER MATCH SKIP PAST LAST ROW */
+	PGMatchRecognizeAfterMatchFirstVar,	/* AFTER MATCH SKIP TO FIRST var */
+	PGMatchRecognizeAfterMatchLastVar	/* AFTER MATCH SKIP TO LAST var */
+} PGMatchRecognizeAfterMatch;
+
+typedef struct PGMatchRecognizeAfterMatchClause {
+	PGMatchRecognizeAfterMatch after_match;
+	PGValue *variable;
+	int location;
+} PGMatchRecognizeAfterMatchClause;
+
 typedef struct PGMatchRecognizeStmt {
 	PGList *partition_clause;
 	PGList *order_clause;
 	PGList *measures_clause;
+	PGMatchRecognizeRowsPerMatch rows_per_match;
+	PGMatchRecognizeAfterMatchClause *after_match_clause;
 	PGList *pattern_clause;
 	PGList *defines_clause;
 	PGAlias *alias;
