@@ -9,12 +9,14 @@ public:
 
 
 
-	ConcatenationExpression() : ParsedExpression(ExpressionType::CONCATENATION, ExpressionClass::PATTERN) {
+	ConcatenationExpression(vector<unique_ptr<ParsedExpression>> children_p) : ParsedExpression(ExpressionType::CONCATENATION, ExpressionClass::PATTERN), children(std::move(children_p)) {
 	}
 
 
 	string ToString() const {
-		return "concatenation";
+		return "(" + StringUtil::Join(children, children.size(), " ", [](const unique_ptr<ParsedExpression> &expr) {
+			return expr->ToString();
+		}) + ")";
 	}
 
 	unique_ptr<ParsedExpression> Copy() const {
@@ -26,64 +28,101 @@ public:
 };
 
 
-class QuantifierExpression : public ParsedExpression {
+class QuantifiedExpression : public ParsedExpression {
 public:
-	QuantifierExpression(string define_col_p, optional_idx min_count_p, optional_idx max_count_p) : ParsedExpression(ExpressionType::QUANTIFIER, ExpressionClass::PATTERN), define_col(define_col_p), min_count(min_count_p), max_count(max_count_p) {
+	QuantifiedExpression(unique_ptr<ParsedExpression> child_p, optional_idx min_count_p, optional_idx max_count_p) : ParsedExpression(ExpressionType::QUANTIFIER, ExpressionClass::PATTERN), child(std::move(child_p)), min_count(min_count_p), max_count(max_count_p) {
 		if (min_count.IsValid() && max_count.IsValid() && min_count.GetIndex() > max_count.GetIndex()) {
 			throw ParserException("Min count cannot be larger than max count");
 		}
 	}
 
-
-
 	string ToString() const {
-		return StringUtil::Format("%s{%s,%s}", define_col, min_count.IsValid()? to_string(min_count.GetIndex()) : "" , max_count.IsValid()? to_string(max_count.GetIndex()) : "");
+		return StringUtil::Format("%s{%s,%s}", child->ToString().c_str(), min_count.IsValid()? to_string(min_count.GetIndex()) : "" , max_count.IsValid()? to_string(max_count.GetIndex()) : "");
 	}
 
 	unique_ptr<ParsedExpression> Copy() const {
 
 	}
-	string define_col;
+	unique_ptr<ParsedExpression> child;
 
 	optional_idx min_count;
 	optional_idx max_count;
 
 };
 
-
+// TODO not liking this list throwing a whole lot..
 unique_ptr<ParsedExpression> Transformer::TransformPattern(duckdb_libpgquery::PGList *pattern) {
 	D_ASSERT(pattern);
 	D_ASSERT(pattern->length > 0);
 	auto type_string = StringUtil::Lower(PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(pattern, 0))->val.str);
-	if (type_string == "quantifier") { // TODO string compare somewhat ugly
-		D_ASSERT(pattern->length == 4); // name colname min_count max_count
+	if (type_string == "variable") {
+		D_ASSERT(pattern->length == 3); // type name quantifier
 		auto define_col_name = StringUtil::Lower(PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(pattern, 1))->val.str);
-		auto min_count_ptr = PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(pattern, 2));
-		auto max_count_ptr = PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(pattern, 3));
 
-		optional_idx min_count = min_count_ptr ? NumericCast<idx_t>(min_count_ptr->val.ival) : optional_idx();
-		optional_idx max_count = max_count_ptr ? NumericCast<idx_t>(max_count_ptr->val.ival) : optional_idx();
+		optional_idx min_count, max_count;
 
-		return make_uniq_base<ParsedExpression, QuantifierExpression>(define_col_name, min_count, max_count);
+		auto quantifier_list = PGPointerCast<duckdb_libpgquery::PGList>(duckdb_libpgquery::list_nth(pattern, 2));
+		if (quantifier_list) {
+
+			D_ASSERT(quantifier_list.get()->length == 2); // min_count max_count (currently)
+				auto min_count_ptr = PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(quantifier_list.get(), 0));
+				auto max_count_ptr = PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(quantifier_list.get(), 1));
+			if (min_count_ptr) {
+				min_count =  NumericCast<idx_t>(min_count_ptr->val.ival) ;
+			}
+			if (max_count_ptr) {
+				max_count =  NumericCast<idx_t>(max_count_ptr->val.ival) ;
+			}
+		}
+		auto child = make_uniq<ColumnRefExpression>(define_col_name);
+		return make_uniq_base<ParsedExpression, QuantifiedExpression>(std::move(child), min_count, max_count);
 	}
+
 	if (type_string == "concatenation") {
-		return make_uniq_base<ParsedExpression, ConcatenationExpression>();
+		D_ASSERT(pattern->length > 1); // type child1 child2 child3...
+		vector<unique_ptr<ParsedExpression>> children;
+		// we start iterating from entry two onwards
+		for (auto node = pattern->head->next; node != nullptr; node = node->next) {
+			auto target = PGPointerCast<duckdb_libpgquery::PGList>(node->data.ptr_value);
+			auto expr = TransformPattern(target.get());
+			children.push_back(std::move(expr));
+		}
+
+		return make_uniq_base<ParsedExpression, ConcatenationExpression>(std::move(children));
 	}
+
+	if (type_string == "grouping") {
+		D_ASSERT(pattern->length == 3); // type children quantifier
+		vector<unique_ptr<ParsedExpression>> children;
+		// we start iterating from entry two onwards
+		auto child_ptr = PGPointerCast<duckdb_libpgquery::PGList>(duckdb_libpgquery::list_nth(pattern, 1));
+		auto child = Transformer::TransformPattern(child_ptr.get());
+
+// FIXME copy-paste
+		optional_idx min_count, max_count;
+
+		auto quantifier_list = PGPointerCast<duckdb_libpgquery::PGList>(duckdb_libpgquery::list_nth(pattern, 2));
+		if (quantifier_list) {
+
+			D_ASSERT(quantifier_list.get()->length == 2); // min_count max_count (currently)
+			auto min_count_ptr = PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(quantifier_list.get(), 0));
+			auto max_count_ptr = PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(quantifier_list.get(), 1));
+			if (min_count_ptr) {
+				min_count =  NumericCast<idx_t>(min_count_ptr->val.ival) ;
+			}
+			if (max_count_ptr) {
+				max_count =  NumericCast<idx_t>(max_count_ptr->val.ival) ;
+			}
+		}
+
+		return make_uniq_base<ParsedExpression, QuantifiedExpression>(std::move(child), min_count, max_count);
+	}
+
+
 	throw ParserException("Unknown pattern type: %s", type_string.c_str());
 }
 
 
-vector<unique_ptr<ParsedExpression>> Transformer::TransformPatternList(duckdb_libpgquery::PGList *list) {
-	vector<unique_ptr<ParsedExpression>> result;
-	if (!list) {
-		return result;
-	}
-	for (auto node = list->head; node != nullptr; node = node->next) {
-		auto value = PGPointerCast<duckdb_libpgquery::PGList>(node->data.ptr_value);
-		result.emplace_back(TransformPattern(value.get()));
-	}
-	return result;
-}
 
 unique_ptr<TableRef> Transformer::TransformMatchRecognize(unique_ptr<TableRef> table,
                                                           optional_ptr<duckdb_libpgquery::PGNode> options) {
@@ -142,10 +181,9 @@ unique_ptr<TableRef> Transformer::TransformMatchRecognize(unique_ptr<TableRef> t
 		throw ParserException("MATCH_RECOGNIZE needs a non-empty pattern");
 	}
 
-	auto pattern = TransformPatternList(match_recognize_stmt->pattern_clause);
+	auto pattern = TransformPattern(match_recognize_stmt->pattern_clause);
 
-	auto pattern_str = StringUtil::Join(pattern, pattern.size(), " ", [](const unique_ptr<ParsedExpression> &expr) {return expr->ToString();});
-	printf("PATTERN: %s\n", pattern_str.c_str());
+	printf("PATTERN: %s\n", pattern->ToString().c_str());
 
 	// defines, this is required?
 	D_ASSERT(match_recognize_stmt->defines_clause);

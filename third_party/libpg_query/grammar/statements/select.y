@@ -832,8 +832,8 @@ mr_quantifier:
         { $$ = list_make2(NIL, makeInteger($3)); };
 
 mr_variable:
-    ColLabelOrString {  $$ = list_make3(makeString("variable"), $1, NIL); } |
-    ColLabelOrString mr_quantifier %prec POSTFIXOP {$$ = list_make3(makeString("variable"), $1, $2);};
+    ColLabelOrString {  $$ = list_make3(makeString("variable"), makeString($1), NIL); } |
+    ColLabelOrString mr_quantifier %prec POSTFIXOP {$$ = list_make3(makeString("variable"), makeString($1), $2);};
 
 mr_grouping:
     '(' mr_concatenation ')'  { $$ = $2; }
@@ -847,7 +847,7 @@ mr_alternation:
     mr_pattern '|' mr_pattern { $$ = list_make3(makeString("alternation"), $1, $3); };
 
 mr_concatenation:
-    mr_pattern { $$ = $1; }
+    mr_pattern {$$ = list_make2(makeString("concatenation"), $1);}
     | mr_concatenation mr_pattern { $$ = lappend($1, $2); }
     | mr_alternation { $$ = $1; };
 
