@@ -8,12 +8,10 @@
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 
 #include "duckdb/planner/expression_iterator.hpp"
-#include "duckdb/planner/expression/bound_constant_expression.hpp"
 #include "duckdb/function/function_list.hpp"
-#include "duckdb/function/scalar/nested_functions.hpp"
-#include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/function/cast/cast_function_set.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
+#include "duckdb/planner/expression_binder.hpp"
 
 #include "duckdb/parser/expression/pattern_expression.hpp"
 
@@ -151,19 +149,6 @@ void ExtractColumnBindings(unique_ptr<Expression> &expr, vector<unique_ptr<Expre
 	    *expr, [&](unique_ptr<Expression> &child) { ExtractColumnBindings(child, bindings); });
 }
 
-unique_ptr<Expression> CreateBoundStructExtract2(ClientContext &context, unique_ptr<Expression> expr, string key) {
-	vector<unique_ptr<Expression>> arguments;
-	arguments.push_back(std::move(expr));
-	arguments.push_back(make_uniq<BoundConstantExpression>(Value(key)));
-	auto extract_function = GetKeyExtractFunction();
-	auto bind_info = extract_function.bind(context, extract_function, arguments);
-	auto return_type = extract_function.return_type;
-	auto result = make_uniq<BoundFunctionExpression>(return_type, std::move(extract_function), std::move(arguments),
-	                                                 std::move(bind_info));
-	result->SetAlias(std::move(key));
-	return std::move(result);
-}
-
 unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 
 	// we bind everything regarding match recognize in a child binder such that these bindings (e.g. of the input table)
@@ -263,7 +248,7 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	unique_ptr<Expression> col_ref_expr = std::move(col_ref_be->expr);
 
 	// Struct extract: struct_extract(t.__match_recognize_fun, "complete")
-	auto struct_extract_expr = CreateBoundStructExtract2(context, std::move(col_ref_expr), "complete");
+	auto struct_extract_expr = CreateBoundStructExtract(context, std::move(col_ref_expr), "complete");
 
 	// CAST(struct_extract(t.__match_recognize_fun, "complete") AS boolean)
 	// this feels very unnecessary as we know complete has type boolean but duckdb adds this cast as well if I actually add WHERE t.__match_recognize_fun.complete
