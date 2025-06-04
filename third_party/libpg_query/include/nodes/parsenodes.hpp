@@ -233,7 +233,8 @@ typedef enum PGAExpr_Kind {
 	PG_AEXPR_NOT_BETWEEN,     /* name must be "NOT BETWEEN" */
 	PG_AEXPR_BETWEEN_SYM,     /* name must be "BETWEEN SYMMETRIC" */
 	PG_AEXPR_NOT_BETWEEN_SYM, /* name must be "NOT BETWEEN SYMMETRIC" */
-	AEXPR_PAREN               /* nameless dummy node for parentheses */
+	AEXPR_PAREN,              /* nameless dummy node for parentheses */
+	PG_AEXPR_MR_QUANTIFIER    /* TODO */
 } PGAExpr_Kind;
 
 typedef struct PGAExpr {
