@@ -7,7 +7,6 @@
 #include "duckdb/planner/expression/bound_expanded_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_parameter_expression.hpp"
-#include "duckdb/planner/expression_binder/aggregate_binder.hpp"
 #include "duckdb/planner/expression_binder/select_binder.hpp"
 #include "duckdb/planner/query_node/bound_select_node.hpp"
 #include "duckdb/planner/expression/bound_unnest_expression.hpp"
@@ -16,6 +15,7 @@
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/main/settings.hpp"
+#include "duckdb/planner/expression_binder.hpp"
 
 namespace duckdb {
 
