@@ -145,16 +145,22 @@ void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate_p,
 		FetchPartitionAndExecute(context, *collection_p->inputs, define_executor, define_result_chunk, partition_start,
 		                         partition_end);
 
+
+		define_result_chunk.Print();
+
 		// TODO state machine stuff
+
+
+		printf("moo [%llu, %llu]\n", partition_start, partition_end);
 
 		// set some dummy values to check result projection
 		for (idx_t partition_idx = partition_start; partition_idx <= partition_end; partition_idx++) {
 			FlatVector::Validity(gstate.result_vec).SetValid(partition_idx);
 			auto &struct_entries = StructVector::GetEntries(gstate.result_vec);
-			// first entry is list of classifiers
+			// first entry is list of classifiers, TODO
 			struct_entries[1]->SetValue(partition_idx, Value::BOOLEAN(true));
-			struct_entries[2]->SetValue(partition_idx, Value::INTEGER(partition_start));
-			struct_entries[3]->SetValue(partition_idx, Value::INTEGER(partition_idx));
+			struct_entries[2]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(partition_start)));
+			struct_entries[3]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(partition_idx)));
 		}
 
 		partition_start = payload_idx;

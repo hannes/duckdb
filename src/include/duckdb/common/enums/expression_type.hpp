@@ -141,6 +141,12 @@ enum class ExpressionType : uint8_t {
 	LAMBDA_REF = 206,
 
 	// -----------------------------
+	// MATCH_RECOGNIZE
+	// -----------------------------
+	QUANTIFIER= 210,
+	CONCATENATION=211,
+
+	// -----------------------------
 	// Miscellaneous
 	// -----------------------------
 	CAST = 225,
@@ -181,6 +187,7 @@ enum class ExpressionClass : uint8_t {
 	POSITIONAL_REFERENCE = 18,
 	BETWEEN = 19,
 	LAMBDA_REF = 20,
+	PATTERN = 21,
 	//===--------------------------------------------------------------------===//
 	// Bound Expressions
 	//===--------------------------------------------------------------------===//

@@ -55,6 +55,25 @@ ORDER BY s.p,s.o
 2	2	0	1
 2	3	0	2
 
+
+# pattern parsing tests, ignore the stuff around
+statement ok
+SELECT COUNT(*)
+FROM test AS t MATCH_RECOGNIZE(
+    MEASURES A.v AS a_val
+    PATTERN (A+ B* C{1,2} D{3,} E{,4})
+    DEFINE A as (v-1) > 0.11,  B as (v-1) > 0.11,  C as (v-1) > 0.11,  D as (v-1) > 0.11,  E as (v-1) > 0.11
+) AS s
+
+statement error # second quantifier value cant be smaller than first one
+SELECT COUNT(*)
+FROM test AS t MATCH_RECOGNIZE(
+    MEASURES A.v AS a_val
+    PATTERN (A+ B* C{2,1} D{3,} E{,4})
+    DEFINE A as (v-1) > 0.11,  B as (v-1) > 0.11,  C as (v-1) > 0.11,  D as (v-1) > 0.11,  E as (v-1) > 0.11
+) AS s
+----
+
 mode skip
 
 query II
