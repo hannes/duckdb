@@ -1,90 +1,30 @@
 #include "duckdb/parser/transformer.hpp"
 #include "duckdb/parser/tableref/match_recognize_ref.hpp"
+#include "duckdb/parser/expression/pattern_expression.hpp"
 
 namespace duckdb {
-
-class ConcatenationExpression : public ParsedExpression {
-public:
-	ConcatenationExpression(vector<unique_ptr<ParsedExpression>> children_p)
-	    : ParsedExpression(ExpressionType::CONCATENATION, ExpressionClass::PATTERN), children(std::move(children_p)) {
-	}
-
-	string ToString() const {
-		return "(" +
-		       StringUtil::Join(children, children.size(), " ",
-		                        [](const unique_ptr<ParsedExpression> &expr) { return expr->ToString(); }) +
-		       ")";
-	}
-
-	unique_ptr<ParsedExpression> Copy() const {
-		throw NotImplementedException("eeek");
-	}
-
-	vector<unique_ptr<ParsedExpression>> children;
-};
-
-class QuantifiedExpression : public ParsedExpression {
-public:
-	QuantifiedExpression(unique_ptr<ParsedExpression> child_p, optional_idx min_count_p, optional_idx max_count_p)
-	    : ParsedExpression(ExpressionType::QUANTIFIER, ExpressionClass::PATTERN), child(std::move(child_p)),
-	      min_count(min_count_p), max_count(max_count_p) {
-		if (min_count.IsValid() && max_count.IsValid() && min_count.GetIndex() > max_count.GetIndex()) {
-			throw ParserException("Min count cannot be larger than max count");
-		}
-	}
-
-	string ToString() const {
-		return StringUtil::Format("%s{%s,%s}", child->ToString().c_str(),
-		                          min_count.IsValid() ? to_string(min_count.GetIndex()) : "",
-		                          max_count.IsValid() ? to_string(max_count.GetIndex()) : "");
-	}
-
-	unique_ptr<ParsedExpression> Copy() const {
-		throw NotImplementedException("eeek");
-	}
-	unique_ptr<ParsedExpression> child;
-
-	optional_idx min_count;
-	optional_idx max_count;
-};
 
 unique_ptr<ParsedExpression> Transformer::TransformPattern(duckdb_libpgquery::PGMatchRecognizePattern *pattern) {
 	D_ASSERT(pattern);
 	switch (pattern->type) {
 	case duckdb_libpgquery::PGMatchRecognizePatternLabel: {
-		auto name = PGPointerCast<duckdb_libpgquery::PGValue>(pattern->child);
+		auto name = PGPointerCast<duckdb_libpgquery::PGValue>(pattern->child_left);
 		auto child = make_uniq_base<ParsedExpression, ColumnRefExpression>(name.get()->val.str);
-		optional_idx min_count;
-		optional_idx max_count;
-		if (pattern->min_count >= 0) {
-			min_count = NumericCast<idx_t>(pattern->min_count);
-		}
-		if (pattern->max_count >= 0) {
-			max_count = NumericCast<idx_t>(pattern->max_count);
-		}
-		if (min_count.IsValid() && max_count.IsValid() && min_count.GetIndex() > max_count.GetIndex()) {
-			throw ParserException("Min count cannot be larger than max count");
-		}
-		return make_uniq_base<ParsedExpression, QuantifiedExpression>(std::move(child), min_count, max_count);
+		auto quantifiers = ParseQuantifier(pattern->min_count, pattern->max_count);
+		return make_uniq_base<ParsedExpression, QuantifiedExpression>(std::move(child), quantifiers.first,
+		                                                              quantifiers.second);
 	}
 	case duckdb_libpgquery::PGMatchRecognizePatternGrouping: {
-		auto child = TransformPatternList(PGPointerCast<duckdb_libpgquery::PGList>(pattern->child).get());
-		if (pattern->min_count < 0 && pattern->max_count) {
-			return child; // easy case
-		}
-		// TODO std::pair??
-		optional_idx min_count;
-		optional_idx max_count;
-		if (pattern->min_count >= 0) {
-			min_count = NumericCast<idx_t>(pattern->min_count);
-		}
-		if (pattern->max_count >= 0) {
-			max_count = NumericCast<idx_t>(pattern->max_count);
-		}
-		if (min_count.IsValid() && max_count.IsValid() && min_count.GetIndex() > max_count.GetIndex()) {
-			throw ParserException("Min count cannot be larger than max count");
-		}
-		return make_uniq_base<ParsedExpression, QuantifiedExpression>(std::move(child), min_count, max_count);
+		auto child = TransformPatternList(PGPointerCast<duckdb_libpgquery::PGList>(pattern->child_left).get());
+		auto quantifiers = ParseQuantifier(pattern->min_count, pattern->max_count);
+		return make_uniq_base<ParsedExpression, QuantifiedExpression>(std::move(child), quantifiers.first,
+		                                                              quantifiers.second);
+	}
+	case duckdb_libpgquery::PGMatchRecognizePatternAlternation: {
+		auto child_left = TransformPatternList(PGPointerCast<duckdb_libpgquery::PGList>(pattern->child_left).get());
+		auto child_right = TransformPatternList(PGPointerCast<duckdb_libpgquery::PGList>(pattern->child_right).get());
+
+		return make_uniq_base<ParsedExpression, AlternationExpression>(std::move(child_left), std::move(child_right));
 	}
 	default:
 		throw NotImplementedException("Unknown pattern type %d", pattern->type);
@@ -94,6 +34,10 @@ unique_ptr<ParsedExpression> Transformer::TransformPattern(duckdb_libpgquery::PG
 unique_ptr<ParsedExpression> Transformer::TransformPatternList(duckdb_libpgquery::PGList *pattern_list) {
 	D_ASSERT(pattern_list);
 	D_ASSERT(pattern_list->length > 0);
+	if (pattern_list->length == 1) { // special case we can short-cut this
+		return TransformPattern(
+		    PGPointerCast<duckdb_libpgquery::PGMatchRecognizePattern>(pattern_list->head->data.ptr_value).get());
+	}
 	vector<unique_ptr<ParsedExpression>> children;
 	for (auto node = pattern_list->head; node != nullptr; node = node->next) {
 		auto child_pattern = PGPointerCast<duckdb_libpgquery::PGMatchRecognizePattern>(node->data.ptr_value);
@@ -165,10 +109,8 @@ unique_ptr<TableRef> Transformer::TransformMatchRecognize(unique_ptr<TableRef> t
 	if (!match_recognize_stmt->pattern_clause || list_length(match_recognize_stmt->pattern_clause) < 1) {
 		throw ParserException("MATCH_RECOGNIZE needs a non-empty pattern");
 	}
-
 	auto pattern = TransformPatternList(match_recognize_stmt->pattern_clause);
-
-	printf("PATTERN: %s\n", pattern->ToString().c_str());
+	match_recognize_config->pattern = std::move(pattern);
 
 	// defines, this is required?
 	D_ASSERT(match_recognize_stmt->defines_clause);

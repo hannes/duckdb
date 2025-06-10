@@ -145,6 +145,7 @@ enum class ExpressionType : uint8_t {
 	// -----------------------------
 	QUANTIFIER = 210,
 	CONCATENATION = 211,
+	ALTERNATION = 212,
 
 	// -----------------------------
 	// Miscellaneous

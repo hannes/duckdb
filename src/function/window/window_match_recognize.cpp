@@ -113,15 +113,15 @@ static void FetchPartitionAndExecute(ClientContext &context, ColumnDataCollectio
 // this gets called per partition
 void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate_p, WindowExecutorLocalState &lstate_p,
                                             CollectionPtr collection_p) const {
-
 	auto &gstate = gstate_p.Cast<WindowMatchRecognizeGlobalState>();
 	lock_guard<mutex> lock(gstate.state_lock);
 
-	auto &defines_expression_list = wexpr.bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list;
-	ExpressionExecutor define_executor(context, defines_expression_list);
+	auto &config = wexpr.bind_info->Cast<MatchRecognizeFunctionData>();
+
+	ExpressionExecutor define_executor(context, config.defines_expression_list);
 
 	vector<LogicalType> define_result_chunk_types;
-	for (auto &def_expr : defines_expression_list) {
+	for (auto &def_expr : config.defines_expression_list) {
 		define_result_chunk_types.push_back(def_expr->return_type);
 	}
 
@@ -145,11 +145,11 @@ void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate_p,
 		FetchPartitionAndExecute(context, *collection_p->inputs, define_executor, define_result_chunk, partition_start,
 		                         partition_end);
 
-		define_result_chunk.Print();
+		// define_result_chunk.Print();
 
 		// TODO state machine stuff
 
-		printf("moo [%llu, %llu]\n", partition_start, partition_end);
+		// printf("moo [%llu, %llu]\n", partition_start, partition_end);
 
 		// set some dummy values to check result projection
 		for (idx_t partition_idx = partition_start; partition_idx <= partition_end; partition_idx++) {

@@ -2341,7 +2341,8 @@ typedef enum PGMatchRecognizePatternType {
 
 typedef struct PGMatchRecognizePattern {
 	PGMatchRecognizePatternType type;
-	PGNode *child;
+	PGNode *child_left;
+	PGNode *child_right;
 	int min_count;
 	int max_count;
 	int location;
