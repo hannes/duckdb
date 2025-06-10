@@ -187,6 +187,7 @@ static PGNode *makeSampleOptions(PGNode *sample_size, char *method, int *seed, i
 
 static PGNode *makeMatchRecognizeClause(PGList *partition_clause,PGList *order_clause, PGList *measures_clause, PGMatchRecognizeRowsPerMatch rows_per_match, PGMatchRecognizeAfterMatchClause *after_match_clause, PGList *pattern_clause, PGList *defines_clause, PGAlias *alias, int location);
 static PGMatchRecognizeAfterMatchClause *makeMatchRecognizeAfterMatchClause(PGMatchRecognizeAfterMatch after_match, PGValue *variable, int location);
+static PGNode *makeMatchRecognizePattern(PGMatchRecognizePatternType type, PGNode* child, int location);
 
 
 static PGNode *makeIntConst(int val, int location);

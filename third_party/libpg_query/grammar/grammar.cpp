@@ -206,6 +206,18 @@ static PGMatchRecognizeAfterMatchClause *makeMatchRecognizeAfterMatchClause(PGMa
 }
 
 
+static PGNode *makeMatchRecognizePattern(PGMatchRecognizePatternType type, PGNode* child, int location) {
+	PGMatchRecognizePattern *n = makeNode(PGMatchRecognizePattern);
+	n->type = type;
+	n->location = location;
+	n->min_count = -1;
+	n->max_count = -1;
+	n->child = child;
+	return (PGNode *)n;
+
+}
+
+
 /* makeLimitPercent()
  * Make limit percent node
  */

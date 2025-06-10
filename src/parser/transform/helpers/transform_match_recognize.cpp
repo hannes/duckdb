@@ -3,126 +3,105 @@
 
 namespace duckdb {
 
-
 class ConcatenationExpression : public ParsedExpression {
 public:
-
-
-
-	ConcatenationExpression(vector<unique_ptr<ParsedExpression>> children_p) : ParsedExpression(ExpressionType::CONCATENATION, ExpressionClass::PATTERN), children(std::move(children_p)) {
+	ConcatenationExpression(vector<unique_ptr<ParsedExpression>> children_p)
+	    : ParsedExpression(ExpressionType::CONCATENATION, ExpressionClass::PATTERN), children(std::move(children_p)) {
 	}
 
-
 	string ToString() const {
-		return "(" + StringUtil::Join(children, children.size(), " ", [](const unique_ptr<ParsedExpression> &expr) {
-			return expr->ToString();
-		}) + ")";
+		return "(" +
+		       StringUtil::Join(children, children.size(), " ",
+		                        [](const unique_ptr<ParsedExpression> &expr) { return expr->ToString(); }) +
+		       ")";
 	}
 
 	unique_ptr<ParsedExpression> Copy() const {
-
+		throw NotImplementedException("eeek");
 	}
 
 	vector<unique_ptr<ParsedExpression>> children;
-
 };
-
 
 class QuantifiedExpression : public ParsedExpression {
 public:
-	QuantifiedExpression(unique_ptr<ParsedExpression> child_p, optional_idx min_count_p, optional_idx max_count_p) : ParsedExpression(ExpressionType::QUANTIFIER, ExpressionClass::PATTERN), child(std::move(child_p)), min_count(min_count_p), max_count(max_count_p) {
+	QuantifiedExpression(unique_ptr<ParsedExpression> child_p, optional_idx min_count_p, optional_idx max_count_p)
+	    : ParsedExpression(ExpressionType::QUANTIFIER, ExpressionClass::PATTERN), child(std::move(child_p)),
+	      min_count(min_count_p), max_count(max_count_p) {
 		if (min_count.IsValid() && max_count.IsValid() && min_count.GetIndex() > max_count.GetIndex()) {
 			throw ParserException("Min count cannot be larger than max count");
 		}
 	}
 
 	string ToString() const {
-		return StringUtil::Format("%s{%s,%s}", child->ToString().c_str(), min_count.IsValid()? to_string(min_count.GetIndex()) : "" , max_count.IsValid()? to_string(max_count.GetIndex()) : "");
+		return StringUtil::Format("%s{%s,%s}", child->ToString().c_str(),
+		                          min_count.IsValid() ? to_string(min_count.GetIndex()) : "",
+		                          max_count.IsValid() ? to_string(max_count.GetIndex()) : "");
 	}
 
 	unique_ptr<ParsedExpression> Copy() const {
-
+		throw NotImplementedException("eeek");
 	}
 	unique_ptr<ParsedExpression> child;
 
 	optional_idx min_count;
 	optional_idx max_count;
-
 };
 
-// TODO not liking this list throwing a whole lot..
-unique_ptr<ParsedExpression> Transformer::TransformPattern(duckdb_libpgquery::PGList *pattern) {
+unique_ptr<ParsedExpression> Transformer::TransformPattern(duckdb_libpgquery::PGMatchRecognizePattern *pattern) {
 	D_ASSERT(pattern);
-	D_ASSERT(pattern->length > 0);
-	auto type_string = StringUtil::Lower(PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(pattern, 0))->val.str);
-	if (type_string == "variable") {
-		D_ASSERT(pattern->length == 3); // type name quantifier
-		auto define_col_name = StringUtil::Lower(PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(pattern, 1))->val.str);
-
-		optional_idx min_count, max_count;
-
-		auto quantifier_list = PGPointerCast<duckdb_libpgquery::PGList>(duckdb_libpgquery::list_nth(pattern, 2));
-		if (quantifier_list) {
-
-			D_ASSERT(quantifier_list.get()->length == 2); // min_count max_count (currently)
-				auto min_count_ptr = PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(quantifier_list.get(), 0));
-				auto max_count_ptr = PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(quantifier_list.get(), 1));
-			if (min_count_ptr) {
-				min_count =  NumericCast<idx_t>(min_count_ptr->val.ival) ;
-			}
-			if (max_count_ptr) {
-				max_count =  NumericCast<idx_t>(max_count_ptr->val.ival) ;
-			}
+	switch (pattern->type) {
+	case duckdb_libpgquery::PGMatchRecognizePatternLabel: {
+		auto name = PGPointerCast<duckdb_libpgquery::PGValue>(pattern->child);
+		auto child = make_uniq_base<ParsedExpression, ColumnRefExpression>(name.get()->val.str);
+		optional_idx min_count;
+		optional_idx max_count;
+		if (pattern->min_count >= 0) {
+			min_count = NumericCast<idx_t>(pattern->min_count);
 		}
-		auto child = make_uniq<ColumnRefExpression>(define_col_name);
+		if (pattern->max_count >= 0) {
+			max_count = NumericCast<idx_t>(pattern->max_count);
+		}
+		if (min_count.IsValid() && max_count.IsValid() && min_count.GetIndex() > max_count.GetIndex()) {
+			throw ParserException("Min count cannot be larger than max count");
+		}
 		return make_uniq_base<ParsedExpression, QuantifiedExpression>(std::move(child), min_count, max_count);
 	}
-
-	if (type_string == "concatenation") {
-		D_ASSERT(pattern->length > 1); // type child1 child2 child3...
-		vector<unique_ptr<ParsedExpression>> children;
-		// we start iterating from entry two onwards
-		for (auto node = pattern->head->next; node != nullptr; node = node->next) {
-			auto target = PGPointerCast<duckdb_libpgquery::PGList>(node->data.ptr_value);
-			auto expr = TransformPattern(target.get());
-			children.push_back(std::move(expr));
+	case duckdb_libpgquery::PGMatchRecognizePatternGrouping: {
+		auto child = TransformPatternList(PGPointerCast<duckdb_libpgquery::PGList>(pattern->child).get());
+		if (pattern->min_count < 0 && pattern->max_count) {
+			return child; // easy case
 		}
-
-		return make_uniq_base<ParsedExpression, ConcatenationExpression>(std::move(children));
-	}
-
-	if (type_string == "grouping") {
-		D_ASSERT(pattern->length == 3); // type children quantifier
-		vector<unique_ptr<ParsedExpression>> children;
-		// we start iterating from entry two onwards
-		auto child_ptr = PGPointerCast<duckdb_libpgquery::PGList>(duckdb_libpgquery::list_nth(pattern, 1));
-		auto child = Transformer::TransformPattern(child_ptr.get());
-
-// FIXME copy-paste
-		optional_idx min_count, max_count;
-
-		auto quantifier_list = PGPointerCast<duckdb_libpgquery::PGList>(duckdb_libpgquery::list_nth(pattern, 2));
-		if (quantifier_list) {
-
-			D_ASSERT(quantifier_list.get()->length == 2); // min_count max_count (currently)
-			auto min_count_ptr = PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(quantifier_list.get(), 0));
-			auto max_count_ptr = PGPointerCast<duckdb_libpgquery::PGValue>(duckdb_libpgquery::list_nth(quantifier_list.get(), 1));
-			if (min_count_ptr) {
-				min_count =  NumericCast<idx_t>(min_count_ptr->val.ival) ;
-			}
-			if (max_count_ptr) {
-				max_count =  NumericCast<idx_t>(max_count_ptr->val.ival) ;
-			}
+		// TODO std::pair??
+		optional_idx min_count;
+		optional_idx max_count;
+		if (pattern->min_count >= 0) {
+			min_count = NumericCast<idx_t>(pattern->min_count);
 		}
-
+		if (pattern->max_count >= 0) {
+			max_count = NumericCast<idx_t>(pattern->max_count);
+		}
+		if (min_count.IsValid() && max_count.IsValid() && min_count.GetIndex() > max_count.GetIndex()) {
+			throw ParserException("Min count cannot be larger than max count");
+		}
 		return make_uniq_base<ParsedExpression, QuantifiedExpression>(std::move(child), min_count, max_count);
 	}
-
-
-	throw ParserException("Unknown pattern type: %s", type_string.c_str());
+	default:
+		throw NotImplementedException("Unknown pattern type %d", pattern->type);
+	}
 }
 
-
+unique_ptr<ParsedExpression> Transformer::TransformPatternList(duckdb_libpgquery::PGList *pattern_list) {
+	D_ASSERT(pattern_list);
+	D_ASSERT(pattern_list->length > 0);
+	vector<unique_ptr<ParsedExpression>> children;
+	for (auto node = pattern_list->head; node != nullptr; node = node->next) {
+		auto child_pattern = PGPointerCast<duckdb_libpgquery::PGMatchRecognizePattern>(node->data.ptr_value);
+		auto expr = TransformPattern(child_pattern.get());
+		children.push_back(std::move(expr));
+	}
+	return make_uniq_base<ParsedExpression, ConcatenationExpression>(std::move(children));
+}
 
 unique_ptr<TableRef> Transformer::TransformMatchRecognize(unique_ptr<TableRef> table,
                                                           optional_ptr<duckdb_libpgquery::PGNode> options) {
@@ -146,9 +125,9 @@ unique_ptr<TableRef> Transformer::TransformMatchRecognize(unique_ptr<TableRef> t
 	// rows per match
 	if (match_recognize_stmt->rows_per_match == duckdb_libpgquery::PGMatchRecognizeRowsPerMatchDefault) {
 #ifdef DUCKDB_ALTERNATIVE_VERIFY
-			match_recognize_config->rows_per_match = MatchRecognizeRows::MATCH_RECOGNIZE_ROWS_ONE;
+		match_recognize_config->rows_per_match = MatchRecognizeRows::MATCH_RECOGNIZE_ROWS_ONE;
 #else
-			match_recognize_config->rows_per_match = MatchRecognizeRows::MATCH_RECOGNIZE_ROWS_DEFAULT;
+		match_recognize_config->rows_per_match = MatchRecognizeRows::MATCH_RECOGNIZE_ROWS_DEFAULT;
 #endif
 	} else if (match_recognize_stmt->rows_per_match == duckdb_libpgquery::PGMatchRecognizeRowsPerMatchOneRow) {
 		match_recognize_config->rows_per_match = MatchRecognizeRows::MATCH_RECOGNIZE_ROWS_ONE;
@@ -160,20 +139,26 @@ unique_ptr<TableRef> Transformer::TransformMatchRecognize(unique_ptr<TableRef> t
 	D_ASSERT(match_recognize_stmt->after_match_clause);
 	if (match_recognize_stmt->after_match_clause->after_match == duckdb_libpgquery::PGMatchRecognizeAfterMatchDefault) {
 #ifdef DUCKDB_ALTERNATIVE_VERIFY
-			match_recognize_config->after_match = MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_LAST_ROW;
-#else
-			match_recognize_config->after_match = MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_DEFAULT;
-#endif
-	} else if (match_recognize_stmt->after_match_clause->after_match == duckdb_libpgquery::PGMatchRecognizeAfterMatchNextRow) {
-		match_recognize_config->after_match = MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_NEXT_ROW;
-	} else if (match_recognize_stmt->after_match_clause->after_match == duckdb_libpgquery::PGMatchRecognizeAfterMatchLastRow) {
 		match_recognize_config->after_match = MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_LAST_ROW;
-	} else if (match_recognize_stmt->after_match_clause->after_match == duckdb_libpgquery::PGMatchRecognizeAfterMatchFirstVar) {
+#else
+		match_recognize_config->after_match = MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_DEFAULT;
+#endif
+	} else if (match_recognize_stmt->after_match_clause->after_match ==
+	           duckdb_libpgquery::PGMatchRecognizeAfterMatchNextRow) {
+		match_recognize_config->after_match = MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_NEXT_ROW;
+	} else if (match_recognize_stmt->after_match_clause->after_match ==
+	           duckdb_libpgquery::PGMatchRecognizeAfterMatchLastRow) {
+		match_recognize_config->after_match = MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_LAST_ROW;
+	} else if (match_recognize_stmt->after_match_clause->after_match ==
+	           duckdb_libpgquery::PGMatchRecognizeAfterMatchFirstVar) {
 		match_recognize_config->after_match = MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_FIRST_VAR;
-		match_recognize_config->after_match_variable = TransformValue(*match_recognize_stmt->after_match_clause->variable);
-	} else if (match_recognize_stmt->after_match_clause->after_match == duckdb_libpgquery::PGMatchRecognizeAfterMatchLastVar) {
+		match_recognize_config->after_match_variable =
+		    TransformValue(*match_recognize_stmt->after_match_clause->variable);
+	} else if (match_recognize_stmt->after_match_clause->after_match ==
+	           duckdb_libpgquery::PGMatchRecognizeAfterMatchLastVar) {
 		match_recognize_config->after_match = MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_LAST_VAR;
-		match_recognize_config->after_match_variable = TransformValue(*match_recognize_stmt->after_match_clause->variable);
+		match_recognize_config->after_match_variable =
+		    TransformValue(*match_recognize_stmt->after_match_clause->variable);
 	}
 
 	// pattern
@@ -181,7 +166,7 @@ unique_ptr<TableRef> Transformer::TransformMatchRecognize(unique_ptr<TableRef> t
 		throw ParserException("MATCH_RECOGNIZE needs a non-empty pattern");
 	}
 
-	auto pattern = TransformPattern(match_recognize_stmt->pattern_clause);
+	auto pattern = TransformPatternList(match_recognize_stmt->pattern_clause);
 
 	printf("PATTERN: %s\n", pattern->ToString().c_str());
 

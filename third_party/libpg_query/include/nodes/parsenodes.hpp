@@ -2250,15 +2250,30 @@ typedef struct PGCommentOnStmt {
  * ----------------------
  */
 
-typedef enum PGMatchRecognizeRowsPerMatch
-{
+typedef enum PGMatchRecognizePatternType {
+	PGMatchRecognizePatternConcatenation,	/* just a sequence A B C */
+	PGMatchRecognizePatternAlternation,	    /* A | B */
+	PGMatchRecognizePatternGrouping,		/* (A B) */
+	PGMatchRecognizePatternLabel,           /* A */
+	PGMatchRecognizePatternAnchorFront,     /* ^ */
+	PGMatchRecognizePatternAnchorBack       /* $ */
+} PGMatchRecognizePatternType;
+
+typedef struct PGMatchRecognizePattern {
+	PGMatchRecognizePatternType type;
+	PGNode *child;
+	int min_count;
+	int max_count;
+	int location;
+} PGMatchRecognizePattern;
+
+typedef enum PGMatchRecognizeRowsPerMatch {
 	PGMatchRecognizeRowsPerMatchDefault,	/* no option specified  */
 	PGMatchRecognizeRowsPerMatchOneRow,		/* ONE ROW PER MATCH */
 	PGMatchRecognizeRowsPerMatchAllRows		/* ALL ROWS PER MATCH */
 } PGMatchRecognizeRowsPerMatch;
 
-typedef enum PGMatchRecognizeAfterMatch
-{
+typedef enum PGMatchRecognizeAfterMatch {
 	PGMatchRecognizeAfterMatchDefault,	/* no option specified  */
 	PGMatchRecognizeAfterMatchNextRow,	/* AFTER MATCH SKIP TO NEXT ROW */
 	PGMatchRecognizeAfterMatchLastRow,	/* AFTER MATCH SKIP PAST LAST ROW */

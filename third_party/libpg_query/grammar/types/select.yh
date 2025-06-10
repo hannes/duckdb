@@ -98,7 +98,8 @@
 %type <rows_per_match> opt_rows_per_match
 %type <after_match_clause> opt_after_match
 
-%type <list>   mr_quantifier mr_concatenation mr_pattern mr_alternation mr_grouping mr_variable
+%type <list> row_pattern row_pattern_quantifier row_pattern_term
+%type <node> row_pattern_primary row_pattern_factor
 
 
 %type <target>	target_el
