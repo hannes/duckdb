@@ -9,7 +9,125 @@
 
 #include "duckdb/planner/expression_iterator.hpp"
 
+#include "duckdb/parser/expression/pattern_expression.hpp"
+
 namespace duckdb {
+
+// TODO make abstract superclass
+// class BoundPatternExpression : public Expression {
+//
+// 	vector<unique_ptr<Expression>> children;
+//
+// };
+
+class BoundAlternationExpression : public Expression {
+
+public:
+	BoundAlternationExpression(unique_ptr<Expression> child_left_p, unique_ptr<Expression> child_right_p)
+	    : Expression(ExpressionType::ALTERNATION, ExpressionClass::PATTERN, LogicalType::INVALID),
+	      child_left(std::move(child_left_p)), child_right(std::move(child_right_p)) {
+	}
+
+	unique_ptr<Expression> child_left;
+	unique_ptr<Expression> child_right;
+
+	string ToString() const {
+		throw NotImplementedException("BOUND ALTERNATION");
+	}
+
+	unique_ptr<Expression> Copy() const {
+		auto child_left_copy = child_left->Copy();
+		auto child_right_copy = child_right->Copy();
+		return make_uniq<BoundAlternationExpression>(std::move(child_left_copy), std::move(child_right_copy));
+	}
+};
+
+class BoundConcatenationExpression : public Expression {
+
+public:
+	BoundConcatenationExpression(vector<unique_ptr<Expression>> children_p)
+	    : Expression(ExpressionType::CONCATENATION, ExpressionClass::PATTERN, LogicalType::INVALID),
+	      children(std::move(children_p)) {
+	}
+
+	vector<unique_ptr<Expression>> children;
+
+	string ToString() const {
+		throw NotImplementedException("BOUND CONCATENATION");
+	}
+
+	unique_ptr<Expression> Copy() const {
+		vector<unique_ptr<Expression>> children_copy;
+		for (auto &child : children) {
+			children_copy.push_back(child->Copy());
+		}
+		return make_uniq<BoundConcatenationExpression>(std::move(children_copy));
+	}
+};
+
+class BoundQuantifierExpression : public Expression {
+
+public:
+	BoundQuantifierExpression(unique_ptr<Expression> child_p, optional_idx min_count_p, optional_idx max_count_p)
+	    : Expression(ExpressionType::QUANTIFIER, ExpressionClass::PATTERN, LogicalType::INVALID),
+	      child(std::move(child_p)), min_count(min_count_p), max_count(max_count_p) {
+	}
+
+	unique_ptr<Expression> child;
+
+	optional_idx min_count;
+	optional_idx max_count;
+
+	string ToString() const {
+		throw NotImplementedException("BOUND QUANTIFIER");
+	}
+
+	unique_ptr<Expression> Copy() const {
+		auto child_copy = child->Copy();
+		return make_uniq<BoundQuantifierExpression>(std::move(child_copy), min_count, max_count);
+	}
+};
+
+BindResult ExpressionBinder::BindPatternExpression(unique_ptr<ParsedExpression> &expr, idx_t depth) {
+	switch (expr->GetExpressionType()) {
+	case ExpressionType::ALTERNATION: {
+		auto &alternation = expr->Cast<AlternationExpression>();
+		auto bound_left = BindExpression(alternation.child_left, depth);
+		if (bound_left.HasError()) {
+			return BindResult(bound_left.error);
+		}
+		auto bound_right = BindExpression(alternation.child_right, depth);
+		if (bound_right.HasError()) {
+			return BindResult(bound_right.error);
+		}
+		return BindResult(make_uniq_base<Expression, BoundAlternationExpression>(std::move(bound_left.expression),
+		                                                                         std::move(bound_right.expression)));
+	}
+	case ExpressionType::CONCATENATION: {
+		auto &concatenation = expr->Cast<ConcatenationExpression>();
+		vector<unique_ptr<Expression>> bound_children;
+		for (auto &child : concatenation.children) {
+			auto child_bind_result = BindExpression(child, depth);
+			if (child_bind_result.HasError()) {
+				return BindResult(child_bind_result.error);
+			}
+			bound_children.push_back(std::move(child_bind_result.expression));
+		}
+		return BindResult(make_uniq_base<Expression, BoundConcatenationExpression>(std::move(bound_children)));
+	}
+	case ExpressionType::QUANTIFIER: {
+		auto &quantifier = expr->Cast<QuantifiedExpression>();
+		auto bound_child = BindExpression(quantifier.child, depth);
+		if (bound_child.HasError()) {
+			return BindResult(bound_child.error);
+		}
+		return BindResult(make_uniq_base<Expression, BoundQuantifierExpression>(
+		    std::move(bound_child.expression), quantifier.min_count, quantifier.max_count));
+	}
+	default:
+		throw NotImplementedException("Unimplemented pattern expression %s", ExpressionTypeToString(expr->type));
+	}
+}
 
 void ExtractColumnBindings(unique_ptr<Expression> &expr, vector<unique_ptr<Expression>> &bindings) {
 	if (expr->GetExpressionType() == ExpressionType::BOUND_COLUMN_REF) {
@@ -70,6 +188,11 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 		window_expression->bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list.emplace_back(
 		    std::move(bound_expr));
 	}
+	auto pattern_binder = Binder::CreateBinder(context);
+	ExpressionBinder pattern_binder_expr(*pattern_binder, context);
+
+	auto bound_pattern = pattern_binder_expr.Bind(ref.config->pattern);
+	window_expression->bind_info->Cast<MatchRecognizeFunctionData>().pattern = std::move(bound_pattern);
 
 	auto table_index = GenerateTableIndex();
 	auto window_operator = make_uniq<LogicalWindow>(table_index);

@@ -39,7 +39,7 @@ struct MatchRecognizeConfig {
 	MatchRecognizeRows rows_per_match;
 	MatchRecognizeAfterMatch after_match;
 	unique_ptr<ConstantExpression> after_match_variable;
-	// TODO pattern
+	unique_ptr<ParsedExpression> pattern;
 };
 
 //! Represents a SHOW/DESCRIBE/SUMMARIZE statement

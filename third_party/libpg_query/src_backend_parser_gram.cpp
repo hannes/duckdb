@@ -1302,7 +1302,7 @@ static PGNode *makeSampleOptions(PGNode *sample_size, char *method, int *seed, i
 
 static PGNode *makeMatchRecognizeClause(PGList *partition_clause,PGList *order_clause, PGList *measures_clause, PGMatchRecognizeRowsPerMatch rows_per_match, PGMatchRecognizeAfterMatchClause *after_match_clause, PGList *pattern_clause, PGList *defines_clause, PGAlias *alias, int location);
 static PGMatchRecognizeAfterMatchClause *makeMatchRecognizeAfterMatchClause(PGMatchRecognizeAfterMatch after_match, PGValue *variable, int location);
-static PGNode *makeMatchRecognizePattern(PGMatchRecognizePatternType type, PGNode* child, int location);
+static PGNode *makeMatchRecognizePattern(PGMatchRecognizePatternType type, PGNode* child_left,PGNode* child_right  , int location);
 
 
 static PGNode *makeIntConst(int val, int location);
@@ -26003,7 +26003,7 @@ yyreduce:
 
   case 669:
 #line 822 "third_party/libpg_query/grammar/statements/select.y"
-    { (yyval.list) = list_make1(makeMatchRecognizePattern(PGMatchRecognizePatternAlternation, NULL /* TODO */, (yylsp[(1) - (3)])));}
+    { (yyval.list) = list_make1(makeMatchRecognizePattern(PGMatchRecognizePatternAlternation, (PGNode*)(yyvsp[(1) - (3)].list), (PGNode*)(yyvsp[(3) - (3)].list), (yylsp[(1) - (3)])));}
     break;
 
   case 670:
@@ -26026,7 +26026,7 @@ yyreduce:
     {
     auto node= (PGMatchRecognizePattern*) (yyvsp[(1) - (2)].node);
     node->min_count = intVal((PGValue*) list_nth((yyvsp[(2) - (2)].list), 0));
-    node->min_count = intVal((PGValue*) list_nth((yyvsp[(2) - (2)].list), 1));
+    node->max_count = intVal((PGValue*) list_nth((yyvsp[(2) - (2)].list), 1));
     (yyval.node) = (PGNode*)node;
    ;}
     break;
@@ -26063,22 +26063,22 @@ yyreduce:
 
   case 680:
 #line 846 "third_party/libpg_query/grammar/statements/select.y"
-    { (yyval.node) = makeMatchRecognizePattern(PGMatchRecognizePatternLabel, (PGNode*)makeString((yyvsp[(1) - (1)].str)), (yylsp[(1) - (1)]));}
+    { (yyval.node) = makeMatchRecognizePattern(PGMatchRecognizePatternLabel, (PGNode*)makeString((yyvsp[(1) - (1)].str)), NULL, (yylsp[(1) - (1)]));}
     break;
 
   case 681:
 #line 847 "third_party/libpg_query/grammar/statements/select.y"
-    { (yyval.node) = makeMatchRecognizePattern(PGMatchRecognizePatternAnchorBack, NULL, (yylsp[(1) - (1)]));}
+    { (yyval.node) = makeMatchRecognizePattern(PGMatchRecognizePatternAnchorBack, NULL, NULL, (yylsp[(1) - (1)]));}
     break;
 
   case 682:
 #line 848 "third_party/libpg_query/grammar/statements/select.y"
-    { (yyval.node) = makeMatchRecognizePattern(PGMatchRecognizePatternAnchorFront, NULL, (yylsp[(1) - (1)]));}
+    { (yyval.node) = makeMatchRecognizePattern(PGMatchRecognizePatternAnchorFront, NULL, NULL, (yylsp[(1) - (1)]));}
     break;
 
   case 683:
 #line 849 "third_party/libpg_query/grammar/statements/select.y"
-    { (yyval.node) = makeMatchRecognizePattern(PGMatchRecognizePatternGrouping, (PGNode*)(yyvsp[(2) - (3)].list), (yylsp[(1) - (3)]));}
+    { (yyval.node) = makeMatchRecognizePattern(PGMatchRecognizePatternGrouping, (PGNode*)(yyvsp[(2) - (3)].list), NULL, (yylsp[(1) - (3)]));}
     break;
 
   case 684:
@@ -32868,13 +32868,14 @@ static PGMatchRecognizeAfterMatchClause *makeMatchRecognizeAfterMatchClause(PGMa
 }
 
 
-static PGNode *makeMatchRecognizePattern(PGMatchRecognizePatternType type, PGNode* child, int location) {
+static PGNode *makeMatchRecognizePattern(PGMatchRecognizePatternType type, PGNode* child_left,PGNode* child_right , int location) {
 	PGMatchRecognizePattern *n = makeNode(PGMatchRecognizePattern);
 	n->type = type;
 	n->location = location;
 	n->min_count = -1;
 	n->max_count = -1;
-	n->child = child;
+	n->child_left = child_left;
+	n->child_right = child_right;
 	return (PGNode *)n;
 
 }

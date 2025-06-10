@@ -149,6 +149,12 @@ string ExpressionTypeToString(ExpressionType type) {
 		return "ARROW";
 	case ExpressionType::BOUND_EXPANDED:
 		return "BOUND_EXPANDED";
+	case ExpressionType::ALTERNATION:
+		return "ALTERNATION";
+	case ExpressionType::CONCATENATION:
+		return "CONCATENATION";
+	case ExpressionType::QUANTIFIER:
+		return "QUANTIFIER";
 	case ExpressionType::INVALID:
 		break;
 	}

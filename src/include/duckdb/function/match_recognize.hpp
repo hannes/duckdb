@@ -16,21 +16,19 @@ namespace duckdb {
 struct MatchRecognizeFunctionData : FunctionData {
 
 	vector<unique_ptr<Expression>> defines_expression_list;
-	// TODO pattern
+	unique_ptr<Expression> pattern;
 
 	unique_ptr<FunctionData> Copy() const override {
 		auto res = make_uniq<MatchRecognizeFunctionData>();
 		for (auto &expr : defines_expression_list) {
 			res->defines_expression_list.emplace_back(expr->Copy());
 		}
-		// TODO pattern
+		res->pattern = pattern->Copy();
 		return res;
 	}
 	bool Equals(const FunctionData &other_p) const override {
 		auto &other = other_p.Cast<MatchRecognizeFunctionData>();
-		// TODO pattern
-		// return defines_expression_list == other.defines_expression_list;
-		return true;
+		throw NotImplementedException("MatchRecognizeFunctionData::Equals not implemented");
 	}
 };
 

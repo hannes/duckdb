@@ -206,13 +206,14 @@ static PGMatchRecognizeAfterMatchClause *makeMatchRecognizeAfterMatchClause(PGMa
 }
 
 
-static PGNode *makeMatchRecognizePattern(PGMatchRecognizePatternType type, PGNode* child, int location) {
+static PGNode *makeMatchRecognizePattern(PGMatchRecognizePatternType type, PGNode* child_left,PGNode* child_right , int location) {
 	PGMatchRecognizePattern *n = makeNode(PGMatchRecognizePattern);
 	n->type = type;
 	n->location = location;
 	n->min_count = -1;
 	n->max_count = -1;
-	n->child = child;
+	n->child_left = child_left;
+	n->child_right = child_right;
 	return (PGNode *)n;
 
 }

@@ -98,6 +98,8 @@ BindResult ExpressionBinder::BindExpression(unique_ptr<ParsedExpression> &expr, 
 		return BindExpression(expr_ref.Cast<ParameterExpression>(), depth);
 	case ExpressionClass::POSITIONAL_REFERENCE:
 		return BindPositionalReference(expr, depth, root_expression);
+	case ExpressionClass::PATTERN:
+		return BindPatternExpression(expr, depth);
 	case ExpressionClass::STAR:
 		return BindResult(BinderException::Unsupported(expr_ref, "STAR expression is not supported here"));
 	default:

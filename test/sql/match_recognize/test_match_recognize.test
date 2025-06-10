@@ -91,6 +91,15 @@ FROM test AS t MATCH_RECOGNIZE(
 ) AS s
 
 
+statement ok
+SELECT COUNT(*)
+FROM test AS t MATCH_RECOGNIZE(
+    MEASURES A.v AS a_val
+    PATTERN (((A | B) | C)+ | (D  E))
+    DEFINE A as (v-1) > 0.11,  B as (v-1) > 0.11,  C as (v-1) > 0.11,  D as (v-1) > 0.11,  E as (v-1) > 0.11
+) AS s
+
+
 
 statement error # second quantifier value cant be smaller than first one
 SELECT COUNT(*)
