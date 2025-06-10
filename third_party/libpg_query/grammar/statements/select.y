@@ -816,43 +816,40 @@ defines_el:	ColLabelOrString AS a_expr
 				}
 
 
-// orr
-mr_quantifier:
-    '*'
-        { $$ = list_make2(makeInteger(0), NIL); }
-    | '+'
-        { $$ = list_make2(makeInteger(1), NIL); }
-    | '{' Iconst '}'
-        { $$ = list_make2(makeInteger($2), makeInteger($2)); }
-    | '{' Iconst ',' '}'
-        { $$ = list_make2(makeInteger($2), NIL); }
-    | '{' Iconst ',' Iconst '}'
-        { $$ = list_make2(makeInteger($2), makeInteger($4)); }
-    | '{' ',' Iconst  '}'
-        { $$ = list_make2(NIL, makeInteger($3)); };
 
-mr_variable:
-    ColLabelOrString {  $$ = list_make3(makeString("variable"), makeString($1), NIL); } |
-    ColLabelOrString mr_quantifier %prec POSTFIXOP {$$ = list_make3(makeString("variable"), makeString($1), $2);};
+row_pattern :
+   row_pattern_term { $$ = $1;}
+  | row_pattern Op row_pattern_term { $$ = list_make1(makeMatchRecognizePattern(PGMatchRecognizePatternAlternation, NULL /* TODO */, @1))};
 
-mr_grouping:
-    '(' mr_concatenation ')'  { $$ = $2; }
-    | '(' mr_concatenation ')' mr_quantifier %prec POSTFIXOP { $$ = list_make3(makeString("grouping"), $2, $4); };
+row_pattern_term :
+   row_pattern_factor { $$ = list_make1($1); }
+  | row_pattern_term row_pattern_factor { $$ = lappend($1, $2); };
 
-mr_pattern:
-    mr_variable { $$ = $1; }
-    | mr_grouping { $$ = $1; };
+row_pattern_factor :
+   row_pattern_primary  { $$ = $1;}
+   | row_pattern_primary row_pattern_quantifier {
+    auto node= (PGMatchRecognizePattern*) $1;
+    node->min_count = intVal((PGValue*) list_nth($2, 0));
+    node->min_count = intVal((PGValue*) list_nth($2, 1));
+    $$ = (PGNode*)node;
+   };
 
-mr_alternation:
-    mr_pattern '|' mr_pattern { $$ = list_make3(makeString("alternation"), $1, $3); };
+row_pattern_quantifier :
+    '*'                     { $$ = list_make2(makeInteger(0),  makeInteger(-1))}
+   | '+'                    { $$ = list_make2(makeInteger(1),  makeInteger(-1))}
+   | '{'Iconst','Iconst'}'  { $$ = list_make2(makeInteger($2), makeInteger($4))};
+   | '{' ','Iconst'}'       { $$ = list_make2(makeInteger(-1), makeInteger($3))}
+   | '{' Iconst ',' '}'     { $$ = list_make2(makeInteger($2), makeInteger(-1))}
+   | '{'Iconst '}'          { $$ = list_make2(makeInteger($2), makeInteger($2))};
 
-mr_concatenation:
-    mr_pattern {$$ = list_make2(makeString("concatenation"), $1);}
-    | mr_concatenation mr_pattern { $$ = lappend($1, $2); }
-    | mr_alternation { $$ = $1; };
+row_pattern_primary :
+   ColLabelOrString      { $$ = makeMatchRecognizePattern(PGMatchRecognizePatternLabel, (PGNode*)makeString($1), @1)}
+   | '$'                 { $$ = makeMatchRecognizePattern(PGMatchRecognizePatternAnchorBack, NULL, @1)}
+   | '^'                 { $$ = makeMatchRecognizePattern(PGMatchRecognizePatternAnchorFront, NULL, @1)}
+   | '(' row_pattern ')' { $$ = makeMatchRecognizePattern(PGMatchRecognizePatternGrouping, (PGNode*)$2, @1)};
 
 match_recognize_clause:
-    MATCH_RECOGNIZE '(' opt_partition_clause opt_sort_clause MEASURES measures_list opt_rows_per_match opt_after_match PATTERN '(' mr_concatenation ')' DEFINE defines_list ')' opt_alias_clause
+    MATCH_RECOGNIZE '(' opt_partition_clause opt_sort_clause MEASURES measures_list opt_rows_per_match opt_after_match PATTERN '(' row_pattern ')' DEFINE defines_list ')' opt_alias_clause
             {
         $$ = makeMatchRecognizeClause($3, $4, $6, $7, $8, $11, $14, $16, @1);
     };

@@ -143,8 +143,8 @@ enum class ExpressionType : uint8_t {
 	// -----------------------------
 	// MATCH_RECOGNIZE
 	// -----------------------------
-	QUANTIFIER= 210,
-	CONCATENATION=211,
+	QUANTIFIER = 210,
+	CONCATENATION = 211,
 
 	// -----------------------------
 	// Miscellaneous
