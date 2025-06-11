@@ -15,6 +15,7 @@
 #include "duckdb/main/extension_install_info.hpp"
 #include "duckdb/main/settings.hpp"
 #include "duckdb/main/valid_checker.hpp"
+#include "duckdb/main/extension/extension_loader.hpp"
 
 namespace duckdb {
 class BufferManager;
@@ -31,6 +32,7 @@ struct AttachOptions;
 class DatabaseFileSystem;
 struct DatabaseCacheEntry;
 class LogManager;
+class ExternalFileCache;
 
 struct ExtensionInfo {
 	bool is_loaded;
@@ -54,6 +56,7 @@ public:
 	DUCKDB_API const BufferManager &GetBufferManager() const;
 	DUCKDB_API DatabaseManager &GetDatabaseManager();
 	DUCKDB_API FileSystem &GetFileSystem();
+	DUCKDB_API ExternalFileCache &GetExternalFileCache();
 	DUCKDB_API TaskScheduler &GetScheduler();
 	DUCKDB_API ObjectCache &GetObjectCache();
 	DUCKDB_API ConnectionManager &GetConnectionManager();
@@ -73,8 +76,8 @@ public:
 
 	DUCKDB_API SettingLookupResult TryGetCurrentSetting(const string &key, Value &result) const;
 
-	unique_ptr<AttachedDatabase> CreateAttachedDatabase(ClientContext &context, const AttachInfo &info,
-	                                                    const AttachOptions &options);
+	unique_ptr<AttachedDatabase> CreateAttachedDatabase(ClientContext &context, AttachInfo &info,
+	                                                    AttachOptions &options);
 
 	void AddExtensionInfo(const string &name, const ExtensionLoadedInfo &info);
 
@@ -95,6 +98,7 @@ private:
 	ValidChecker db_validity;
 	unique_ptr<DatabaseFileSystem> db_file_system;
 	shared_ptr<LogManager> log_manager;
+	unique_ptr<ExternalFileCache> external_file_cache;
 
 	duckdb_ext_api_v1 (*create_api_v1)();
 };
@@ -120,21 +124,20 @@ public:
 		if (ExtensionIsLoaded(extension.Name())) {
 			return;
 		}
-		extension.Load(*this);
+
+		// Instantiate a new loader
+		ExtensionLoader loader(*instance, extension.Name());
+
+		// Call the Load method of the extension
+		extension.Load(loader);
+
+		// Finalize the loading process
+		loader.FinalizeLoad();
+
 		ExtensionInstallInfo install_info;
 		install_info.mode = ExtensionInstallMode::STATICALLY_LINKED;
 		install_info.version = extension.Version();
 		instance->SetExtensionLoaded(extension.Name(), install_info);
-	}
-
-	// DEPRECATED function that some extensions may still use to call their own Load method from the
-	// _init function of their loadable extension. Don't use this. Instead opt for a static LoadInternal function called
-	// from both the _init function and the Extension::Load. (see autocomplete extension)
-	// TODO: when to remove this function?
-	template <class T>
-	void LoadExtension() {
-		T extension;
-		extension.Load(*this);
 	}
 
 	DUCKDB_API FileSystem &GetFileSystem();
@@ -142,6 +145,7 @@ public:
 	DUCKDB_API idx_t NumberOfThreads();
 	DUCKDB_API static const char *SourceID();
 	DUCKDB_API static const char *LibraryVersion();
+	DUCKDB_API static const char *ReleaseCodename();
 	DUCKDB_API static idx_t StandardVectorSize();
 	DUCKDB_API static string Platform();
 	DUCKDB_API bool ExtensionIsLoaded(const string &name);

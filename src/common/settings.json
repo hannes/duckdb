@@ -115,6 +115,17 @@
         "scope": "global"
     },
     {
+        "name": "arrow_output_version",
+        "description": "Whether strings should be produced by DuckDB in Utf8View format instead of Utf8",
+        "type": "VARCHAR",
+        "scope": "global",
+        "internal_setting": "arrow_output_version",
+        "custom_implementation": [
+            "set",
+            "get"
+        ]
+    },
+    {
         "name": "asof_loop_join_threshold",
         "description": "The maximum number of rows we need on the left side of an ASOF join to use a nested loop join",
         "type": "UBIGINT",
@@ -219,6 +230,13 @@
         "scope": "global"
     },
     {
+        "name": "debug_verify_vector",
+        "description": "DEBUG SETTING: enable vector verification",
+        "type": "VARCHAR",
+        "return_type": "DebugVectorVerification",
+        "scope": "global"
+    },
+    {
         "name": "debug_window_mode",
         "description": "DEBUG SETTING: switch window mode to use",
         "type": "VARCHAR",
@@ -272,6 +290,12 @@
         "custom_implementation": true
     },
     {
+        "name": "disable_timestamptz_casts",
+        "description": "Disable casting from timestamp to timestamptz ",
+        "type": "BOOLEAN",
+        "scope": "local"
+    },
+    {
         "name": "disabled_compression_methods",
         "description": "Disable a specific set of compression methods (comma separated)",
         "type": "VARCHAR",
@@ -323,6 +347,13 @@
             "set",
             "reset"
         ]
+    },
+    {
+        "name": "enable_external_file_cache",
+        "description": "Allow the database to cache external files (e.g., Parquet) in memory.",
+        "type": "BOOLEAN",
+        "scope": "global",
+        "custom_implementation": true
     },
     {
         "name": "enable_fsst_vectors",
@@ -530,6 +561,13 @@
         "scope": "local"
     },
     {
+        "name": "lambda_syntax",
+        "description": "Configures the use of the deprecated single arrow operator (->) for lambda functions.",
+        "type": "VARCHAR",
+        "scope": "local",
+        "custom_implementation": true
+    },
+    {
         "name": "late_materialization_max_rows",
         "description": "The maximum amount of rows in the LIMIT/SAMPLE for which we trigger late materialization",
         "type": "UBIGINT",
@@ -711,6 +749,13 @@
         ]
     },
     {
+        "name": "profiling_coverage",
+        "description": "The profiling coverage (SELECT or ALL)",
+        "type": "VARCHAR",
+        "scope": "local",
+        "custom_implementation": true
+    },
+    {
         "name": "profiling_mode",
         "description": "The profiling mode (STANDARD or DETAILED)",
         "type": "VARCHAR",
@@ -729,6 +774,12 @@
         "description": "When a scalar subquery returns multiple rows - return a random row instead of returning an error.",
         "type": "BOOLEAN",
         "scope": "local"
+    },
+    {
+        "name": "scheduler_process_partial",
+        "description": "Partially process tasks before rescheduling - allows for more scheduler fairness between separate queries",
+        "type": "BOOLEAN",
+        "scope": "global"
     },
     {
         "name": "schema",
