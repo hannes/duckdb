@@ -83,7 +83,7 @@ string ExpressionTypeToString(ExpressionType type) {
 		return "MATCH_RECOGNIZE";
 	case ExpressionType::WINDOW_FILL:
 		return "FILL";
-		case ExpressionType::FUNCTION:
+	case ExpressionType::FUNCTION:
 		return "FUNCTION";
 	case ExpressionType::CASE_EXPR:
 		return "CASE";

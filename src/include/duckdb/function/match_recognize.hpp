@@ -28,7 +28,9 @@ struct MatchRecognizeFunctionData : FunctionData {
 	}
 	bool Equals(const FunctionData &other_p) const override {
 		auto &other = other_p.Cast<MatchRecognizeFunctionData>();
-		throw NotImplementedException("MatchRecognizeFunctionData::Equals not implemented");
+		auto expressions_equal = Expression::ListEquals(other.defines_expression_list, defines_expression_list);
+		auto pattern_equal = other.pattern->Equals(*pattern);
+		return expressions_equal && pattern_equal;
 	}
 };
 

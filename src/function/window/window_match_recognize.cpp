@@ -145,6 +145,7 @@ void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate_p,
 		FetchPartitionAndExecute(context, *collection_p->inputs, define_executor, define_result_chunk, partition_start,
 		                         partition_end);
 
+		config.pattern->Print();
 		// define_result_chunk.Print();
 
 		// TODO state machine stuff

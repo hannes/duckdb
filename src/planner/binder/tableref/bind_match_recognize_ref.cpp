@@ -32,7 +32,7 @@ public:
 	unique_ptr<Expression> child_right;
 
 	string ToString() const {
-		throw NotImplementedException("BOUND ALTERNATION");
+		return StringUtil::Format("(%s|%s)", child_left->ToString(), child_right->ToString());
 	}
 
 	unique_ptr<Expression> Copy() const {
@@ -53,7 +53,8 @@ public:
 	vector<unique_ptr<Expression>> children;
 
 	string ToString() const {
-		throw NotImplementedException("BOUND CONCATENATION");
+		return StringUtil::Join(children, children.size(), ", ",
+		                        [](const unique_ptr<Expression> &expr) { return expr->ToString(); });
 	}
 
 	unique_ptr<Expression> Copy() const {
@@ -78,8 +79,13 @@ public:
 	optional_idx min_count;
 	optional_idx max_count;
 
+	static string QuantifierToString(optional_idx min_count, optional_idx max_count) {
+		return StringUtil::Format("{%s,%s}", min_count.IsValid() ? to_string(min_count.GetIndex()) : "",
+		                          max_count.IsValid() ? to_string(max_count.GetIndex()) : "");
+	}
+
 	string ToString() const {
-		throw NotImplementedException("BOUND QUANTIFIER");
+		return child->ToString() + QuantifierToString(min_count, max_count);
 	}
 
 	unique_ptr<Expression> Copy() const {
@@ -181,15 +187,18 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 
 	// we need to extract column refs, those that are used in defines become parameters of the window functions
 	// we should hand over the **bound** expressions
+	auto pattern_binder = Binder::CreateBinder(context);
+	ExpressionBinder pattern_binder_expr(*pattern_binder, context);
+	vector<string> define_names;
 	for (auto &expr : ref.config->defines_expression_list) {
 		auto bound_expr = expression_binder.Bind(expr);
-
+		define_names.push_back(bound_expr->GetAlias());
 		ExtractColumnBindings(bound_expr, window_expression->children);
 		window_expression->bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list.emplace_back(
 		    std::move(bound_expr));
 	}
-	auto pattern_binder = Binder::CreateBinder(context);
-	ExpressionBinder pattern_binder_expr(*pattern_binder, context);
+	pattern_binder->bind_context.AddGenericBinding(0, "__match_recognize_defines", define_names,
+	                                               {ref.config->defines_expression_list.size(), LogicalType::BOOLEAN});
 
 	auto bound_pattern = pattern_binder_expr.Bind(ref.config->pattern);
 	window_expression->bind_info->Cast<MatchRecognizeFunctionData>().pattern = std::move(bound_pattern);
