@@ -67,6 +67,9 @@ struct BindResult {
 	ErrorData error;
 };
 
+unique_ptr<Expression> CreateBoundStructExtract(ClientContext &context, unique_ptr<Expression> expr, string key);
+unique_ptr<Expression> CreateBoundStructExtractIndex(ClientContext &context, unique_ptr<Expression> expr, idx_t key);
+
 class ExpressionBinder {
 	friend class StackChecker<ExpressionBinder>;
 
