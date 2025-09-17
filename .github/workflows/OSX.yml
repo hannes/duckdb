@@ -60,9 +60,9 @@ jobs:
         fetch-depth: 0
         ref: ${{ inputs.git_ref }}
 
-    - uses: actions/setup-python@v3
-      with:
-        python-version: '3.12'
+#    - uses: actions/setup-python@v3
+#      with:
+#        python-version: '3.12'
 
     - name: Setup Ccache
       uses: hendrikmuhs/ccache-action@main
