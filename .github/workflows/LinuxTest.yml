@@ -1,0 +1,58 @@
+name: LinuxTest
+on:
+  push:
+
+#
+#concurrency:
+#  group: linuxrelease-${{ github.workflow }}-${{ github.ref }}-${{ github.head_ref || '' }}-${{ github.base_ref || '' }}-${{ github.ref != 'refs/heads/main' || github.sha }}-${{ inputs.override_git_describe }}
+#  cancel-in-progress: true
+
+#env:
+#  GH_TOKEN: ${{ secrets.GH_TOKEN }}
+#  OVERRIDE_GIT_DESCRIBE: ${{ inputs.override_git_describe }}
+
+jobs:
+
+ linux-libduckdb.a:
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [ { runner: ubuntu-latest, arch: amd64, image: x86_64}, {runner: ubuntu-24.04-arm, arch: arm64, image: aarch64}]
+
+    name: Linux libduckdb.a (${{ matrix.config.arch }})
+    runs-on: ${{ matrix.config.runner }}
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.git_ref }}
+
+    - name: Build
+      shell: bash
+      run: |
+        mkdir build
+        export PWD=`pwd`
+        docker run                                                             \
+        -v$PWD:$PWD                                                            \
+        -e CMAKE_BUILD_PARALLEL_LEVEL=2                                        \
+        quay.io/pypa/manylinux_2_28_${{ matrix.config.image }}                  \
+        bash -c "
+          set -e
+          git config --global --add safe.directory $PWD
+          cd $PWD
+          cmake -DDISABLE_BUILTIN_EXTENSIONS=1 -DCMAKE_BUILD_TYPE=Release  -S . -B build
+          cmake --build build --target duckdb_static
+          cp build/src/libduckdb_static.a  build
+        "
+        zstd -k build/libduckdb_static.a
+        ls -lah build
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: duckdb-binaries-linux-${{ matrix.config.arch }}
+        path: |
+          llibduckdb_static.a.zst
+
+
+# TODO new step: run tests
