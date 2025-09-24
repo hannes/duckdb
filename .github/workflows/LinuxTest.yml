@@ -13,7 +13,7 @@ on:
 
 jobs:
 
- linux-libduckdb.a:
+ linux-libduckdb-a:
     strategy:
       fail-fast: false
       matrix:
