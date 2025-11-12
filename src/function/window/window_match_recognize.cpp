@@ -6,11 +6,11 @@
 namespace duckdb {
 
 struct WindowMatchRecognizeGlobalState : WindowExecutorGlobalState {
-	WindowMatchRecognizeGlobalState(const WindowExecutor &executor_p, const idx_t payload_count_p,
-	                                const ValidityMask &partition_mask_p, const ValidityMask &order_mask_p)
-	    : WindowExecutorGlobalState(executor_p, payload_count_p, partition_mask_p, order_mask_p),
+	WindowMatchRecognizeGlobalState(ClientContext &client, const WindowExecutor &executor_p,
+	                                const idx_t payload_count_p, const ValidityMask &partition_mask_p,
+	                                const ValidityMask &order_mask_p)
+	    : WindowExecutorGlobalState(client, executor_p, payload_count_p, partition_mask_p, order_mask_p),
 	      result_vec(executor_p.wexpr.return_type, payload_count_p) {
-
 		FlatVector::Validity(result_vec).SetAllInvalid(payload_count_p);
 		D_ASSERT(result_vec.GetType().id() == LogicalTypeId::STRUCT);
 		auto &struct_entries = StructVector::GetEntries(result_vec);
@@ -39,10 +39,9 @@ void UpdateColumnBindings(unique_ptr<Expression> &expr, unordered_map<column_t, 
 //===--------------------------------------------------------------------===//
 // WindowMatchRecognizeExecutor
 //===--------------------------------------------------------------------===//
-WindowMatchRecognizeExecutor::WindowMatchRecognizeExecutor(BoundWindowExpression &wexpr, ClientContext &context,
+WindowMatchRecognizeExecutor::WindowMatchRecognizeExecutor(BoundWindowExpression &wexpr,
                                                            WindowSharedExpressions &shared)
-    : WindowExecutor(wexpr, context, shared) {
-
+    : WindowExecutor(wexpr, shared) {
 	// RegisterCollection deduplicates child expressions - we need to update the references in the defines to its return
 	// value
 	unordered_map<column_t, column_t> replacement_map;
@@ -58,10 +57,11 @@ WindowMatchRecognizeExecutor::WindowMatchRecognizeExecutor(BoundWindowExpression
 	}
 }
 
-unique_ptr<WindowExecutorGlobalState>
-WindowMatchRecognizeExecutor::GetGlobalState(const idx_t payload_count, const ValidityMask &partition_mask,
-                                             const ValidityMask &order_mask) const {
-	return make_uniq<WindowMatchRecognizeGlobalState>(*this, payload_count, partition_mask, order_mask);
+unique_ptr<GlobalSinkState> WindowMatchRecognizeExecutor::GetGlobalState(ClientContext &client,
+                                                                         const idx_t payload_count,
+                                                                         const ValidityMask &partition_mask,
+                                                                         const ValidityMask &order_mask) const {
+	return make_uniq<WindowMatchRecognizeGlobalState>(client, *this, payload_count, partition_mask, order_mask);
 }
 
 inline bool RowIsVisible(ColumnDataScanState &scan, idx_t row_idx) {
@@ -111,14 +111,14 @@ static void FetchPartitionAndExecute(ClientContext &context, ColumnDataCollectio
 }
 
 // this gets called per partition
-void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate_p, WindowExecutorLocalState &lstate_p,
-                                            CollectionPtr collection_p) const {
-	auto &gstate = gstate_p.Cast<WindowMatchRecognizeGlobalState>();
+void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, CollectionPtr collection,
+                                            OperatorSinkInput &sink) const {
+	auto &gstate = sink.global_state.Cast<WindowMatchRecognizeGlobalState>();
 	lock_guard<mutex> lock(gstate.state_lock);
 
 	auto &config = wexpr.bind_info->Cast<MatchRecognizeFunctionData>();
 
-	ExpressionExecutor define_executor(context, config.defines_expression_list);
+	ExpressionExecutor define_executor(context.client, config.defines_expression_list);
 
 	vector<LogicalType> define_result_chunk_types;
 	for (auto &def_expr : config.defines_expression_list) {
@@ -131,7 +131,7 @@ void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate_p,
 
 	// TODO figure out biggest partition size before, payload count is upper bound but overkill
 	DataChunk define_result_chunk;
-	define_result_chunk.Initialize(context, define_result_chunk_types, gstate.payload_count);
+	define_result_chunk.Initialize(context.client, define_result_chunk_types, gstate.payload_count);
 
 	for (idx_t payload_idx = 1; payload_idx < gstate.payload_count; payload_idx++) {
 		if (!gstate.partition_mask.RowIsValid(payload_idx) && payload_idx + 1 < gstate.payload_count) {
@@ -142,8 +142,8 @@ void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate_p,
 		// the partition end offset depends on whether we found a next partition or if we are at the end
 		auto partition_end =
 		    payload_idx + 1 == gstate.partition_mask.RowIsValid(payload_idx) ? payload_idx - 1 : payload_idx;
-		FetchPartitionAndExecute(context, *collection_p->inputs, define_executor, define_result_chunk, partition_start,
-		                         partition_end);
+		FetchPartitionAndExecute(context.client, *collection->inputs, define_executor, define_result_chunk,
+		                         partition_start, partition_end);
 
 		config.pattern->Print();
 		// define_result_chunk.Print();
@@ -167,12 +167,11 @@ void WindowMatchRecognizeExecutor::Finalize(WindowExecutorGlobalState &gstate_p,
 }
 
 // this should actually be it yay!
-void WindowMatchRecognizeExecutor::EvaluateInternal(WindowExecutorGlobalState &gstate_p,
-                                                    WindowExecutorLocalState &lstate_p, DataChunk &eval_chunk_p,
-                                                    Vector &result_p, idx_t count_p, idx_t row_idx_p) const {
-	auto &gstate = gstate_p.Cast<WindowMatchRecognizeGlobalState>();
+void WindowMatchRecognizeExecutor::EvaluateInternal(ExecutionContext &context, DataChunk &eval_chunk, Vector &result,
+                                                    idx_t count, idx_t row_idx, OperatorSinkInput &sink) const {
+	auto &gstate = sink.global_state.Cast<WindowMatchRecognizeGlobalState>();
 	lock_guard<mutex> lock(gstate.state_lock);
-	result_p.Slice(gstate.result_vec, row_idx_p, row_idx_p + count_p);
+	result.Slice(gstate.result_vec, row_idx, row_idx + count);
 }
 
 } // namespace duckdb

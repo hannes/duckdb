@@ -101,7 +101,11 @@ for kw in reserved_keywords:
     kwdict[kw] = 'RESERVED_KEYWORD'
 
 kwlist = [(x, kwdict[x]) for x in kwdict.keys()]
-kwlist.sort(key=lambda x: strip_p(x[0]))
+# lower() neccessary for correct ordering
+# since MATCHED < MATCH_RECOGNIZE
+#   and matched > match_recognize
+# the parser/bison seems to rely on the lowercase sorting
+kwlist.sort(key=lambda x: strip_p(x[0].lower()))
 
 # now generate kwlist.h
 # PG_KEYWORD("abort", ABORT_P, UNRESERVED_KEYWORD)

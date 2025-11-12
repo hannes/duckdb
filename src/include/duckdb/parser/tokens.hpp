@@ -95,12 +95,10 @@ class TableRef;
 
 class BaseTableRef;
 class BoundRefWrapper;
-class JoinRef;
-class SubqueryRef;
-class TableFunctionRef;
+class ColumnDataRef;
 class EmptyTableRef;
 class ExpressionListRef;
-class ColumnDataRef;
+class JoinRef;
 class MatchRecognizeRef;
 class PivotRef;
 class ShowRef;

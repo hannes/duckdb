@@ -42,19 +42,6 @@ unique_ptr<Expression> CreateBoundStructExtract(ClientContext &context, unique_p
 	return std::move(result);
 }
 
-unique_ptr<Expression> CreateBoundStructExtractIndex(ClientContext &context, unique_ptr<Expression> expr, idx_t key) {
-	vector<unique_ptr<Expression>> arguments;
-	arguments.push_back(std::move(expr));
-	arguments.push_back(make_uniq<BoundConstantExpression>(Value::BIGINT(int64_t(key))));
-	auto extract_function = GetIndexExtractFunction();
-	auto bind_info = extract_function.bind(context, extract_function, arguments);
-	auto return_type = extract_function.GetReturnType();
-	auto result = make_uniq<BoundFunctionExpression>(return_type, std::move(extract_function), std::move(arguments),
-	                                                 std::move(bind_info));
-	result->SetAlias("element" + to_string(key));
-	return std::move(result);
-}
-
 void SelectBinder::ThrowIfUnnestInLambda(const ColumnBinding &column_binding) {
 	// Extract the unnests and check if any match the column index.
 	for (auto &node_pair : node.unnests) {

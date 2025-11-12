@@ -4,7 +4,6 @@
 #include "duckdb/planner/operator/logical_window.hpp"
 #include "duckdb/function/match_recognize.hpp"
 #include "duckdb/planner/expression/bound_window_expression.hpp"
-#include "duckdb/planner/tableref/bound_match_recognize.hpp"
 #include "duckdb/planner/expression/bound_reference_expression.hpp"
 
 #include "duckdb/planner/expression_iterator.hpp"
@@ -25,7 +24,6 @@ namespace duckdb {
 // };
 
 class BoundAlternationExpression : public Expression {
-
 public:
 	BoundAlternationExpression(unique_ptr<Expression> child_left_p, unique_ptr<Expression> child_right_p)
 	    : Expression(ExpressionType::ALTERNATION, ExpressionClass::PATTERN, LogicalType::INVALID),
@@ -47,7 +45,6 @@ public:
 };
 
 class BoundConcatenationExpression : public Expression {
-
 public:
 	BoundConcatenationExpression(vector<unique_ptr<Expression>> children_p)
 	    : Expression(ExpressionType::CONCATENATION, ExpressionClass::PATTERN, LogicalType::INVALID),
@@ -71,7 +68,6 @@ public:
 };
 
 class BoundQuantifierExpression : public Expression {
-
 public:
 	BoundQuantifierExpression(unique_ptr<Expression> child_p, optional_idx min_count_p, optional_idx max_count_p)
 	    : Expression(ExpressionType::QUANTIFIER, ExpressionClass::PATTERN, LogicalType::INVALID),
@@ -149,8 +145,7 @@ void ExtractColumnBindings(unique_ptr<Expression> &expr, vector<unique_ptr<Expre
 	    *expr, [&](unique_ptr<Expression> &child) { ExtractColumnBindings(child, bindings); });
 }
 
-unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
-
+BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	// we bind everything regarding match recognize in a child binder such that these bindings (e.g. of the input table)
 	// are hidden, and we can add a new binding for the input columns and the measures columns to the match recognize
 	// alias.
@@ -160,7 +155,6 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	auto &config = DBConfig::GetConfig(context);
 	// the expression_binder needs the child_binder as its parent to reference to columns of the input table
 	ExpressionBinder expression_binder(*child_binder, context);
-	auto child_node_plan = child_binder->CreatePlan(*child_node);
 
 	// window
 	// filter
@@ -186,8 +180,8 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	}
 
 	for (auto &order : ref.config->order_by_expressions) {
-		auto type = config.ResolveOrder(order.type);
-		auto null_order = config.ResolveNullOrder(type, order.null_order);
+		auto type = config.ResolveOrder(context, order.type);
+		auto null_order = config.ResolveNullOrder(context, type, order.null_order);
 		window_expression->orders.emplace_back(type, null_order, expression_binder.Bind(order.expression));
 	}
 
@@ -212,7 +206,7 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 	auto table_index = GenerateTableIndex();
 	auto window_operator = make_uniq<LogicalWindow>(table_index);
 	window_operator->expressions.push_back(std::move(window_expression));
-	window_operator->children.push_back(std::move(child_node_plan));
+	window_operator->children.push_back(std::move(child_node.plan));
 	window_operator->ResolveOperatorTypes();
 
 	// add the measures columns or whatever we need to our internal match recognize table
@@ -234,41 +228,53 @@ unique_ptr<BoundTableRef> Binder::Bind(MatchRecognizeRef &ref) {
 
 	// put the match recognize tables into a subquery to hide the original data
 	// SELECT * FROM (input_table, window_operator) AS mr_alias
-	unique_ptr<BoundSelectNode> subquery = make_uniq<BoundSelectNode>();
+	auto subquery_ptr = make_uniq<BoundSelectNode>();
+	auto &subquery = *subquery_ptr;
 	auto bindings = window_operator->GetColumnBindings();
-
-	for (idx_t i = 0; i < bindings.size(); i++) {
-		auto col = make_uniq<BoundColumnRefExpression>(window_operator->types[i], bindings[i]);
-		subquery->select_list.push_back(std::move(col));
-	}
-	subquery->from_table = make_uniq<BoundMatchRecognizeRef>(std::move(window_operator));
-
-	// filter: add WHERE t.__match_recognize_fun.complete to only extract complete matches
-	// t.__match_recognize_fun
-	auto col_ref = make_uniq<BoundColumnRefExpression>(return_type, bindings[bindings.size()-1]);
-    auto col_ref_be = make_uniq<BoundExpression>(std::move(col_ref));
-	unique_ptr<Expression> col_ref_expr = std::move(col_ref_be->expr);
-
-	// Struct extract: struct_extract(t.__match_recognize_fun, "complete")
-	auto struct_extract_expr = CreateBoundStructExtract(context, std::move(col_ref_expr), "complete");
-
-	// CAST(struct_extract(t.__match_recognize_fun, "complete") AS boolean)
-	// this feels very unnecessary as we know complete has type boolean but duckdb adds this cast as well if I actually add WHERE t.__match_recognize_fun.complete
-	GetCastFunctionInput get_input(context);
-	BoundCastInfo cast_function = CastFunctionSet::Get(context).GetCastFunction(struct_extract_expr->return_type, LogicalType::BOOLEAN, get_input);
-	unique_ptr<BoundCastExpression> cast_expr = make_uniq<BoundCastExpression>(std::move(struct_extract_expr), LogicalType::BOOLEAN, std::move(cast_function));
-	subquery->where_clause = std::move(cast_expr);
-	subquery->where_clause = std::move(struct_extract_expr);
-
-	// add the binding for the subquery
-	idx_t bind_index = GenerateTableIndex();
-	subquery->projection_index = bind_index;
 	vector<string> names;
 	vector<LogicalType> types;
 	child_binder->bind_context.GetTypesAndNames(names, types);
+
+	for (idx_t i = 0; i < bindings.size(); i++) {
+		auto col = make_uniq<BoundColumnRefExpression>(window_operator->types[i], bindings[i]);
+		subquery.select_list.push_back(std::move(col));
+	}
+
+	BoundStatement from_statement;
+	from_statement.plan = std::move(window_operator);
+	from_statement.types = types;
+	from_statement.names = names;
+	subquery.from_table = std::move(from_statement);
+
+	// filter: add WHERE t.__match_recognize_fun.complete to only extract complete matches
+	// t.__match_recognize_fun
+	auto col_ref = make_uniq<BoundColumnRefExpression>(return_type, bindings[bindings.size() - 1]);
+	auto col_ref_be = make_uniq<BoundExpression>(std::move(col_ref));
+	unique_ptr<Expression> col_ref_expr = std::move(col_ref_be->expr);
+	// Struct extract: struct_extract(t.__match_recognize_fun, "complete")
+	auto struct_extract_expr = CreateBoundStructExtract(context, std::move(col_ref_expr), "complete");
+	// CAST(struct_extract(t.__match_recognize_fun, "complete") AS boolean)
+	// this feels very unnecessary as we know complete has type boolean but duckdb adds this cast as well if I actually
+	// add WHERE t.__match_recognize_fun.complete
+	//	GetCastFunctionInput get_input(context);
+	//	BoundCastInfo cast_function = CastFunctionSet::Get(context).GetCastFunction(struct_extract_expr->return_type,
+	//	                                                                            LogicalType::BOOLEAN, get_input);
+	//    unique_ptr<BoundCastExpression> cast_expr = make_uniq<BoundCastExpression>(std::move(struct_extract_expr),
+	//                                                                               LogicalType::BOOLEAN,
+	//                                                                               std::move(cast_function));
+	//    subquery->where_clause = std::move(cast_expr);
+	subquery.where_clause = std::move(struct_extract_expr);
+
+	// add the binding for the subquery
+	idx_t bind_index = GenerateTableIndex();
+	subquery.projection_index = bind_index;
 	bind_context.AddGenericBinding(bind_index, mr_alias, names, types);
 
-	return make_uniq<BoundSubqueryRef>(std::move(child_binder), std::move(subquery));
+	BoundStatement result_statement;
+	result_statement.types = types;
+	result_statement.names = names;
+	result_statement.plan = this->CreatePlan(subquery);
+	return result_statement;
 }
 
 } // namespace duckdb

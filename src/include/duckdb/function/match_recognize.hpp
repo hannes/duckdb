@@ -14,7 +14,6 @@
 namespace duckdb {
 
 struct MatchRecognizeFunctionData : FunctionData {
-
 	vector<unique_ptr<Expression>> defines_expression_list;
 	unique_ptr<Expression> pattern;
 
