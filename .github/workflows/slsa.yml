@@ -1,0 +1,18 @@
+name: SLSA container-based releaser
+on:
+  push:
+
+permissions: read-all
+
+jobs:
+  # Trusted builder.
+  build:
+    permissions:
+      id-token: write # To sign the provenance.
+      contents: read # To upload assets to release.
+      actions: read # To read the workflow path.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/builder_container-based_slsa3.yml@v2.1.0
+    with:
+      builder-image: "bash"
+      builder-digest: "sha256:9e2ba52487d945504d250de186cb4fe2e3ba023ed2921dd6ac8b97ed43e76af9"
+      config-path: ".github/config/slsa.toml"
