@@ -9,7 +9,7 @@ jobs:
   build:
     permissions:
       id-token: write # To sign the provenance.
-      contents: read # To upload assets to release.
+      contents: write # To upload assets to release.
       actions: read # To read the workflow path.
     uses: slsa-framework/slsa-github-generator/.github/workflows/builder_container-based_slsa3.yml@v2.1.0
     with:
