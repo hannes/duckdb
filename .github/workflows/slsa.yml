@@ -13,6 +13,6 @@ jobs:
       actions: read # To read the workflow path.
     uses: slsa-framework/slsa-github-generator/.github/workflows/builder_container-based_slsa3.yml@v2.1.0
     with:
-      builder-image: "ubuntu:24.04"
-      builder-digest: "sha256:e96e81f410a9f9cae717e6cdd88cc2a499700ff0bb5061876ad24377fcc517d7"
+      builder-image: "quay.io/pypa/manylinux_2_28_x86_64:2025.11.11-1"
+      builder-digest: "sha256:a7333f64cc4dd1b103e1c9e1f3415267391bdf773c892720dd28b887cefc0c26"
       config-path: ".github/config/slsa.toml"
