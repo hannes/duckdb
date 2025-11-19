@@ -20,7 +20,8 @@ public:
 	                                           const ValidityMask &partition_mask,
 	                                           const ValidityMask &order_mask) const override;
 
-//	unique_ptr<LocalSinkState> GetLocalState(ExecutionContext &context, const GlobalSinkState &gstate) const override;
+	//	unique_ptr<LocalSinkState> GetLocalState(ExecutionContext &context, const GlobalSinkState &gstate) const
+	//override;
 
 	void Finalize(ExecutionContext &context, CollectionPtr collection, OperatorSinkInput &sink) const override;
 
@@ -29,8 +30,8 @@ protected:
 	                      OperatorSinkInput &sink) const override;
 
 private:
-    column_t start_idx;
-    column_t end_idx;
+	column_t start_idx;
+	column_t end_idx;
 };
 
 } // namespace duckdb
