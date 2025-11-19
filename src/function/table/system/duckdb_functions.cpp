@@ -776,6 +776,17 @@ void ExtractWindowFunctionData(ClientContext &context, const WindowFunctionDefin
 		ExtractFunctionData<WindowFunctionCatalogEntry, WindowFunctionExtractor>(function, 0, output, output_offset);
 		break;
 	}
+	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS: {
+		child_list_t<LogicalType> child_types;
+		child_types.emplace_back("classifier", LogicalType::LIST(LogicalType::VARCHAR));
+		child_types.emplace_back("keep", LogicalType::BOOLEAN);
+		child_types.emplace_back("match_start", LogicalType::UBIGINT);
+		child_types.emplace_back("match_end", LogicalType::UBIGINT);
+		WindowFunctionCatalogEntry function(default_schema, name, {LogicalType::BIGINT, LogicalType::BIGINT},
+		                                    LogicalType::STRUCT(child_types));
+		ExtractFunctionData<WindowFunctionCatalogEntry, WindowFunctionExtractor>(function, 0, output, output_offset);
+		break;
+	}
 	default:
 		throw InternalException("Window function '%s' not implemented", name);
 	}

@@ -403,6 +403,7 @@ WindowBoundsSet WindowBoundariesState::GetWindowBounds(const BoundWindowExpressi
 	case ExpressionType::WINDOW_NTH_VALUE:
 	case ExpressionType::WINDOW_AGGREGATE:
 	case ExpressionType::WINDOW_MATCH_RECOGNIZE:
+	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS:
 		result.insert(FRAME_BEGIN);
 		result.insert(FRAME_END);
 		break;

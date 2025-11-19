@@ -6,6 +6,7 @@
 #include "duckdb/function/window/window_aggregate_function.hpp"
 #include "duckdb/function/window/window_executor.hpp"
 #include "duckdb/function/window/window_match_recognize.hpp"
+#include "duckdb/function/window/window_nonoverlap_intervals.hpp"
 #include "duckdb/function/window/window_rank_function.hpp"
 #include "duckdb/function/window/window_rownumber_function.hpp"
 #include "duckdb/function/window/window_shared_expressions.hpp"
@@ -285,6 +286,8 @@ static unique_ptr<WindowExecutor> WindowExecutorFactory(BoundWindowExpression &w
 		return make_uniq<WindowNthValueExecutor>(wexpr, shared);
 	case ExpressionType::WINDOW_MATCH_RECOGNIZE:
 		return make_uniq<WindowMatchRecognizeExecutor>(wexpr, shared);
+	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS:
+		return make_uniq<WindowNonOverlapIntervalsExecutor>(wexpr, shared);
 	default:
 		throw InternalException("Window aggregate type %s", ExpressionTypeToString(wexpr.GetExpressionType()));
 	}

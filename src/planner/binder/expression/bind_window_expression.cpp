@@ -35,6 +35,7 @@ static LogicalType ResolveWindowExpressionType(ExpressionType window_type, const
 		param_count = 1;
 		break;
 	case ExpressionType::WINDOW_NTH_VALUE:
+	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS:
 		param_count = 2;
 		break;
 	default:
@@ -60,6 +61,14 @@ static LogicalType ResolveWindowExpressionType(ExpressionType window_type, const
 	case ExpressionType::WINDOW_LAG:
 	case ExpressionType::WINDOW_FILL:
 		return child_types[0];
+	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS: {
+		child_list_t<LogicalType> child_types;
+		child_types.emplace_back("classifier", LogicalType::LIST(LogicalType::VARCHAR));
+		child_types.emplace_back("keep", LogicalType::BOOLEAN);
+		child_types.emplace_back("match_start", LogicalType::UBIGINT);
+		child_types.emplace_back("match_end", LogicalType::UBIGINT);
+		return LogicalType::STRUCT(child_types);
+	}
 	default:
 		throw InternalException("Unrecognized window expression type " + ExpressionTypeToString(window_type));
 	}
@@ -178,17 +187,30 @@ BindResult BaseSelectBinder::BindWindow(WindowExpression &window, idx_t depth) {
 	} else if (window.GetExpressionType() == ExpressionType::WINDOW_FILL &&
 	           (window.arg_orders.size() > 1 || (window.arg_orders.empty() && window.orders.size() != 1))) {
 		throw BinderException(error_context, "FILL functions must have only one ORDER BY expression");
+	} else if (window.GetExpressionType() == ExpressionType::WINDOW_NON_OVERLAP_INTERVALS &&
+	           !(window.arg_orders.empty() && window.orders.empty())) {
+		throw BinderException(
+		    error_context,
+		    "INTERVALS functions do not allow an ORDER BY expression. Rows are always ordered by the first argument.");
 	}
+
 	// bind inside the children of the window function
 	// we set the inside_window flag to true to prevent binding nested window functions
 	inside_window = true;
 	ErrorData error;
+	auto first_child = window.children[0]->Copy();
 	for (auto &child : window.children) {
 		BindChild(child, depth, error);
 	}
 	for (auto &child : window.partitions) {
 		BindChild(child, depth, error);
 	}
+
+	if (window.GetExpressionType() == ExpressionType::WINDOW_NON_OVERLAP_INTERVALS) {
+		OrderByNode order_node(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(first_child));
+		window.orders.push_back(std::move(order_node));
+	}
+
 	for (auto &order : window.orders) {
 		BindChild(order.expression, depth, error);
 
@@ -207,6 +229,7 @@ BindResult BaseSelectBinder::BindWindow(WindowExpression &window, idx_t depth) {
 			BindRangeExpression(context, "+", order.expression, epoch);
 		}
 	}
+
 	BindChild(window.filter_expr, depth, error);
 	BindChild(window.start_expr, depth, error);
 	BindChild(window.end_expr, depth, error);

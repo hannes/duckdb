@@ -63,6 +63,7 @@ static bool IsExcludableWindowFunction(ExpressionType type) {
 	case ExpressionType::WINDOW_LEAD:
 	case ExpressionType::WINDOW_LAG:
 	case ExpressionType::WINDOW_FILL:
+	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS:
 		return false;
 	default:
 		throw InternalException("Unknown excludable window type %s", ExpressionTypeToString(type).c_str());
@@ -168,6 +169,8 @@ static bool IsOrderableWindowFunction(ExpressionType type) {
 		return true;
 	case ExpressionType::WINDOW_RANK_DENSE:
 		return false;
+	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS:
+		return true; // TODO: just to be sure, this might actually not be neccessary and false could be sufficient.
 	default:
 		throw InternalException("Unknown orderable window type %s", ExpressionTypeToString(type).c_str());
 	}
@@ -267,7 +270,8 @@ unique_ptr<ParsedExpression> Transformer::TransformFuncCall(duckdb_libpgquery::P
 				if (children.size() > 3) {
 					throw ParserException("Incorrect number of parameters for function %s", lowercase_name);
 				}
-			} else if (win_fun_type == ExpressionType::WINDOW_NTH_VALUE) {
+			} else if (win_fun_type == ExpressionType::WINDOW_NTH_VALUE ||
+			           win_fun_type == ExpressionType::WINDOW_NON_OVERLAP_INTERVALS) {
 				if (children.size() > 1) {
 					expr->children.push_back(std::move(children[1]));
 				}

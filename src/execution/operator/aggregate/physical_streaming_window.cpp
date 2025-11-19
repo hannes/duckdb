@@ -369,6 +369,9 @@ bool PhysicalStreamingWindow::IsStreamingFunction(ClientContext &context, unique
 		return StreamingWindowState::LeadLagState::ComputeDefault(context, wexpr, dflt) &&
 		       StreamingWindowState::LeadLagState::ComputeOffset(context, wexpr, offset);
 	}
+	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS:
+		// We enforce ordering internally by the first input column
+		return true;
 	default:
 		return false;
 	}

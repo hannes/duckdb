@@ -83,6 +83,8 @@ string ExpressionTypeToString(ExpressionType type) {
 		return "FILL";
 	case ExpressionType::WINDOW_MATCH_RECOGNIZE:
 		return "MATCH_RECOGNIZE";
+	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS:
+		return "NON_OVERLAP_INTERVALS";
 	case ExpressionType::FUNCTION:
 		return "FUNCTION";
 	case ExpressionType::CASE_EXPR:
