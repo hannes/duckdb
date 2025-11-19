@@ -149,11 +149,12 @@ void ExtractColumnBindings(unique_ptr<Expression> &expr, vector<unique_ptr<Expre
 BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	// Steps:
 	// binding+planning input table
-	// apply pattern matching window
+	// apply pattern matching window (todo: complete implementation)
 	// filter out only complete matches
 	// apply after match window
 	// filter out only non-overlapping matches
-	// all rows per match, measures, final, ...
+	// todo: all rows per match, measures, final, ...
+	// final projection that hides intermediate structures
 
 	// we bind everything regarding match recognize in a child binder such that these bindings (e.g. of the input table)
 	// are hidden, and we can add a new binding for the input columns and the measures columns to the match recognize
@@ -163,75 +164,78 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	auto &config = DBConfig::GetConfig(context);
 
 	// Pattern Matching Window: return type
-	auto return_type = LogicalType::STRUCT({{"classifiers", LogicalType::LIST(LogicalType::VARCHAR)},
-	                                        {"complete", LogicalType::BOOLEAN},
-	                                        {"match_start", LogicalType::UBIGINT},
-	                                        {"match_end", LogicalType::UBIGINT}});
+	auto pattern_return_type = LogicalType::STRUCT({{"classifiers", LogicalType::LIST(LogicalType::VARCHAR)},
+	                                                {"complete", LogicalType::BOOLEAN},
+	                                                {"match_start", LogicalType::UBIGINT},
+	                                                {"match_end", LogicalType::UBIGINT}});
 
 	// Pattern Matching Window: window expression
-	auto window_expression =
-	    make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_MATCH_RECOGNIZE, return_type,
+	auto pattern_window =
+	    make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_MATCH_RECOGNIZE, pattern_return_type,
 	                                     MatchRecognizeFun::GetFunction(), make_uniq<MatchRecognizeFunctionData>());
-	window_expression->start = WindowBoundary::UNBOUNDED_PRECEDING;
-	window_expression->end = WindowBoundary::UNBOUNDED_FOLLOWING;
+	pattern_window->start = WindowBoundary::UNBOUNDED_PRECEDING;
+	pattern_window->end = WindowBoundary::UNBOUNDED_FOLLOWING;
 
 	// the expression_binder needs the child_binder as its parent to reference to columns of the input table
 	ExpressionBinder expression_binder(*child_binder, context);
 
+	// copy partitions to bind them twice in different places
 	vector<unique_ptr<ParsedExpression>> partitions;
 	for (auto &expr : ref.config->partition_expressions) {
 		partitions.push_back(expr->Copy());
 	}
 
 	for (auto &expr : partitions) {
-		window_expression->partitions.push_back(expression_binder.Bind(expr));
+		pattern_window->partitions.push_back(expression_binder.Bind(expr));
 	}
 
 	for (auto &order : ref.config->order_by_expressions) {
 		auto type = config.ResolveOrder(context, order.type);
 		auto null_order = config.ResolveNullOrder(context, type, order.null_order);
-		window_expression->orders.emplace_back(type, null_order, expression_binder.Bind(order.expression));
+		pattern_window->orders.emplace_back(type, null_order, expression_binder.Bind(order.expression));
 	}
 
 	// Pattern Matching Window: Define List
 	// we need to extract column refs, those that are used in defines become parameters of the window functions
 	// we should hand over the **bound** expressions
 	auto pattern_binder = Binder::CreateBinder(context);
-	ExpressionBinder pattern_binder_expr(*pattern_binder, context);
+	ExpressionBinder pattern_expr_binder(*pattern_binder, context);
 	vector<string> define_names;
 	for (auto &expr : ref.config->defines_expression_list) {
 		auto bound_expr = expression_binder.Bind(expr);
 		define_names.push_back(bound_expr->GetAlias());
-		ExtractColumnBindings(bound_expr, window_expression->children);
-		window_expression->bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list.emplace_back(
+		ExtractColumnBindings(bound_expr, pattern_window->children);
+		pattern_window->bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list.emplace_back(
 		    std::move(bound_expr));
 	}
 	pattern_binder->bind_context.AddGenericBinding(0, "__match_recognize_defines", define_names,
 	                                               {ref.config->defines_expression_list.size(), LogicalType::BOOLEAN});
 
-	auto bound_pattern = pattern_binder_expr.Bind(ref.config->pattern);
-	window_expression->bind_info->Cast<MatchRecognizeFunctionData>().pattern = std::move(bound_pattern);
+	auto bound_pattern = pattern_expr_binder.Bind(ref.config->pattern);
+	pattern_window->bind_info->Cast<MatchRecognizeFunctionData>().pattern = std::move(bound_pattern);
 
 	// Pattern Matching Window: Generate Table
-	auto table_index1 = GenerateTableIndex();
-	auto window_operator = make_uniq<LogicalWindow>(table_index1);
-	window_operator->expressions.push_back(std::move(window_expression));
-	window_operator->children.push_back(std::move(child_node.plan));
-	window_operator->ResolveOperatorTypes();
+	auto pattern_table_index = GenerateTableIndex();
+	auto pattern_window_operator = make_uniq<LogicalWindow>(pattern_table_index);
+	pattern_window_operator->expressions.push_back(std::move(pattern_window));
+	pattern_window_operator->children.push_back(std::move(child_node.plan));
+	pattern_window_operator->ResolveOperatorTypes();
+
+	auto pattern_window_binder = Binder::CreateBinder(context, child_binder.get());
+	pattern_window_binder->bind_context.AddGenericBinding(pattern_table_index, "__match_recognize_w1", {"__w1_struct"},
+	                                                      {pattern_return_type});
 
 	// Filter for complete matches
-	auto first_window_bindings = window_operator->GetColumnBindings();
-	auto bound_col_ref = make_uniq<BoundColumnRefExpression>("bound_col_ref", return_type,
-	                                                         first_window_bindings[first_window_bindings.size() - 1]);
-	unique_ptr<Expression> col_ref_expr = std::move(make_uniq<BoundExpression>(std::move(bound_col_ref))->expr);
-	auto bound_condition = CreateBoundStructExtract(context, std::move(col_ref_expr), "complete");
+	auto pattern_window_bindings = pattern_window_operator->GetColumnBindings();
+	auto pattern_struct_bound = make_uniq<BoundColumnRefExpression>(
+	    "pattern_struct_bound", pattern_return_type, pattern_window_bindings[pattern_window_bindings.size() - 1]);
+	unique_ptr<Expression> pattern_struct_expr =
+	    std::move(make_uniq<BoundExpression>(std::move(pattern_struct_bound))->expr);
+	auto pattern_struct_complete = CreateBoundStructExtract(context, std::move(pattern_struct_expr), "complete");
 
-	auto filter_complete_matches = make_uniq<LogicalFilter>(std::move(bound_condition));
-	filter_complete_matches->children.push_back(std::move(window_operator));
-	filter_complete_matches->ResolveOperatorTypes();
-
-	auto child_binder2 = Binder::CreateBinder(context, child_binder.get());
-	child_binder2->bind_context.AddGenericBinding(table_index1, "__match_recognize_w1", {"__w1_struct"}, {return_type});
+	auto complete_filter = make_uniq<LogicalFilter>(std::move(pattern_struct_complete));
+	complete_filter->children.push_back(std::move(pattern_window_operator));
+	complete_filter->ResolveOperatorTypes();
 
 	// After Match Window
 	auto after_match_return_type = LogicalType::STRUCT({{"classifiers", LogicalType::LIST(LogicalType::VARCHAR)},
@@ -244,60 +248,64 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	after_match_window->start = WindowBoundary::UNBOUNDED_PRECEDING;
 	after_match_window->end = WindowBoundary::CURRENT_ROW_RANGE;
 
-	// TODO: Monday! continue debugging here: resulttype for expression binding is null and that seems to be a problem.
-	// It isn't earlier though. check what happens there. Maybe something else is wrong.
+	// bind same partitions to second window as well
 	for (auto &expr : ref.config->partition_expressions) {
 		after_match_window->partitions.push_back(expression_binder.Bind(expr));
 	}
 
-	// After Match Window: actualize the implicit order by
-	auto first_filter_bindings = filter_complete_matches->GetColumnBindings();
-	auto bound_col_ref2 = make_uniq<BoundColumnRefExpression>("bound_col_ref2", return_type,
-	                                                          first_filter_bindings[first_filter_bindings.size() - 1]);
-	unique_ptr<Expression> col_ref_expr2 = std::move(make_uniq<BoundExpression>(std::move(bound_col_ref2))->expr);
-	unique_ptr<Expression> col_ref_expr3 = col_ref_expr2->Copy();
-	unique_ptr<Expression> col_ref_expr4 = col_ref_expr2->Copy();
-	auto low = CreateBoundStructExtract(context, std::move(col_ref_expr2), "match_start");
-	auto low2 = CreateBoundStructExtract(context, std::move(col_ref_expr3), "match_start");
-	auto high = CreateBoundStructExtract(context, std::move(col_ref_expr4), "match_end");
+	// After Match Window: actualize the implicit ORDER BY
+	// TODO: we could spare us some of this if the intervals window took the struct as input
+	// TODO: actually integrate different behaviour based on the skip option -> skip_to column in pattern struct
+	auto complete_filter_bindings = complete_filter->GetColumnBindings();
+	auto pattern_struct_bound2 = make_uniq<BoundColumnRefExpression>(
+	    "pattern_struct_bound2", pattern_return_type, complete_filter_bindings[complete_filter_bindings.size() - 1]);
+	unique_ptr<Expression> pattern_struct_expr2 =
+	    std::move(make_uniq<BoundExpression>(std::move(pattern_struct_bound2))->expr);
+	unique_ptr<Expression> pattern_struct_expr3 = pattern_struct_expr2->Copy();
+	unique_ptr<Expression> pattern_struct_expr4 = pattern_struct_expr2->Copy();
+	auto low = CreateBoundStructExtract(context, std::move(pattern_struct_expr2), "match_start");
+	auto low2 = CreateBoundStructExtract(context, std::move(pattern_struct_expr3), "match_start");
+	auto high = CreateBoundStructExtract(context, std::move(pattern_struct_expr4), "match_end");
 	BoundOrderByNode order_node(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(low));
-	auto type = config.ResolveOrder(context, order_node.type);
-	auto null_order = config.ResolveNullOrder(context, type, order_node.null_order);
-	after_match_window->orders.emplace_back(type, null_order, std::move(order_node.expression));
+	after_match_window->orders.emplace_back(order_node.type, order_node.null_order, std::move(order_node.expression));
 	after_match_window->children.push_back(std::move(low2));
 	after_match_window->children.push_back(std::move(high));
 
 	// Pattern Matching Window: Generate Table
-	auto table_index2 = GenerateTableIndex();
-	auto window_operator2 = make_uniq<LogicalWindow>(table_index2);
-	window_operator2->expressions.push_back(std::move(after_match_window));
-	window_operator2->children.push_back(std::move(filter_complete_matches));
-	window_operator2->ResolveOperatorTypes();
+	auto after_match_table_index = GenerateTableIndex();
+	auto after_match_window_operator = make_uniq<LogicalWindow>(after_match_table_index);
+	after_match_window_operator->expressions.push_back(std::move(after_match_window));
+	after_match_window_operator->children.push_back(std::move(complete_filter));
+	after_match_window_operator->ResolveOperatorTypes();
+
+	auto after_match_binder = Binder::CreateBinder(context, child_binder.get());
+	after_match_binder->bind_context.AddGenericBinding(after_match_table_index, "__match_recognize_ref",
+	                                                   {"__match_recognize_fun"}, {after_match_return_type});
 
 	// Filter for non-overlapping matches
-	auto second_window_bindings = window_operator2->GetColumnBindings();
-	auto bound_col_ref3 = make_uniq<BoundColumnRefExpression>(
-	    "bound_col_ref3", after_match_return_type, second_window_bindings[second_window_bindings.size() - 1]);
-	unique_ptr<Expression> col_ref_expr5 = std::move(make_uniq<BoundExpression>(std::move(bound_col_ref3))->expr);
-	auto bound_condition2 = CreateBoundStructExtract(context, std::move(col_ref_expr5), "keep");
+	auto after_match_window_bindings = after_match_window_operator->GetColumnBindings();
+	auto after_match_struct_bound =
+	    make_uniq<BoundColumnRefExpression>("after_match_struct_bound", after_match_return_type,
+	                                        after_match_window_bindings[after_match_window_bindings.size() - 1]);
+	unique_ptr<Expression> after_match_struct_expr =
+	    std::move(make_uniq<BoundExpression>(std::move(after_match_struct_bound))->expr);
+	auto after_match_struct_keep = CreateBoundStructExtract(context, std::move(after_match_struct_expr), "keep");
 
-	auto filter_non_overlapping_matches = make_uniq<LogicalFilter>(std::move(bound_condition2));
-	filter_non_overlapping_matches->children.push_back(std::move(window_operator2));
-	filter_non_overlapping_matches->ResolveOperatorTypes();
+	auto no_overlap_filter = make_uniq<LogicalFilter>(std::move(after_match_struct_keep));
+	no_overlap_filter->children.push_back(std::move(after_match_window_operator));
+	no_overlap_filter->ResolveOperatorTypes();
 
-	// add the measures columns or whatever we need to our internal match recognize table
-	auto child_binder3 = Binder::CreateBinder(context, child_binder.get());
-	child_binder3->bind_context.AddGenericBinding(table_index2, "__match_recognize_ref", {"__match_recognize_fun"},
-	                                              {after_match_return_type});
+	// TODO we need to stack more stuff on top of this operator
+	// add the measures columns and whatever else we need to our internal match recognize table
+
+	// Final Projection: collect names and types of all bindings present in our last operator
 	vector<string> names;
 	vector<LogicalType> types;
 	child_binder->bind_context.GetTypesAndNames(names, types);
-	child_binder2->bind_context.GetTypesAndNames(names, types);
-	child_binder3->bind_context.GetTypesAndNames(names, types);
+	pattern_window_binder->bind_context.GetTypesAndNames(names, types);
+	after_match_binder->bind_context.GetTypesAndNames(names, types);
 
-	// TODO we need to stack more stuff on top of this operator
-
-	// Bind the match recognize alias in a subquery
+	// Final Projection: retrieve the match recognize alias
 	string mr_alias;
 	if (ref.alias.empty()) {
 		auto index = unnamed_subquery_index++;
@@ -309,31 +317,34 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 		mr_alias = ref.alias;
 	}
 
-	// put the match recognize tables into a subquery to hide the original data
-	// SELECT * FROM (input_table, window_operator) AS mr_alias
-	auto bindings = filter_non_overlapping_matches->GetColumnBindings();
+	// Final Projection: collect names and types of all bindings we want to output
 	vector<string> final_names;
 	vector<LogicalType> final_types;
 	child_binder->bind_context.GetTypesAndNames(final_names, final_types);
-	child_binder3->bind_context.GetTypesAndNames(final_names, final_types);
+	after_match_binder->bind_context.GetTypesAndNames(final_names, final_types);
+
+	// Final Projection: collect all bindings we want to output
+	auto bindings = no_overlap_filter->GetColumnBindings();
 	vector<unique_ptr<Expression>> select_expressions;
 
 	for (idx_t i = 0; i < bindings.size(); i++) {
-		if (i == 4)
+		// pattern window struct is the second last binding; skip it.
+		if (i == bindings.size() - 2)
 			continue;
 		auto col = make_uniq<BoundColumnRefExpression>(StringUtil::Format("select%d", i), types[i], bindings[i]);
 		select_expressions.push_back(std::move(col));
 	}
 
-	auto table_index3 = GenerateTableIndex();
-	auto log_projection = make_uniq<LogicalProjection>(table_index3, std::move(select_expressions));
-	log_projection->children.push_back(std::move(filter_non_overlapping_matches));
-	bind_context.AddGenericBinding(table_index3, mr_alias, final_names, final_types);
+	// Final Projection: Generate Table
+	auto final_projection_table_index = GenerateTableIndex();
+	auto final_projection = make_uniq<LogicalProjection>(final_projection_table_index, std::move(select_expressions));
+	final_projection->children.push_back(std::move(no_overlap_filter));
+	bind_context.AddGenericBinding(final_projection_table_index, mr_alias, final_names, final_types);
 
 	BoundStatement result_statement;
 	result_statement.types = final_types;
 	result_statement.names = final_names;
-	result_statement.plan = std::move(log_projection);
+	result_statement.plan = std::move(final_projection);
 	return result_statement;
 }
 
