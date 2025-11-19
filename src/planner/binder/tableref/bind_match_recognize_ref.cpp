@@ -1,18 +1,19 @@
 #include "duckdb/parser/tableref/match_recognize_ref.hpp"
-#include "duckdb/planner/binder.hpp"
-
-#include "duckdb/planner/operator/logical_window.hpp"
-#include "duckdb/function/match_recognize.hpp"
-#include "duckdb/planner/expression/bound_window_expression.hpp"
-#include "duckdb/planner/expression/bound_reference_expression.hpp"
-
-#include "duckdb/planner/expression_iterator.hpp"
-#include "duckdb/function/function_list.hpp"
-#include "duckdb/function/cast/cast_function_set.hpp"
-#include "duckdb/planner/expression/bound_cast_expression.hpp"
-#include "duckdb/planner/expression_binder.hpp"
-
 #include "duckdb/parser/expression/pattern_expression.hpp"
+
+#include "duckdb/function/cast/cast_function_set.hpp"
+#include "duckdb/function/function_list.hpp"
+#include "duckdb/function/match_recognize.hpp"
+
+#include "duckdb/planner/binder.hpp"
+#include "duckdb/planner/expression_binder.hpp"
+#include "duckdb/planner/expression_iterator.hpp"
+#include "duckdb/planner/expression/bound_cast_expression.hpp"
+#include "duckdb/planner/expression/bound_reference_expression.hpp"
+#include "duckdb/planner/expression/bound_window_expression.hpp"
+#include "duckdb/planner/operator/logical_filter.hpp"
+#include "duckdb/planner/operator/logical_projection.hpp"
+#include "duckdb/planner/operator/logical_window.hpp"
 
 namespace duckdb {
 
@@ -146,36 +147,43 @@ void ExtractColumnBindings(unique_ptr<Expression> &expr, vector<unique_ptr<Expre
 }
 
 BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
+	// Steps:
+	// binding+planning input table
+	// apply pattern matching window
+	// filter out only complete matches
+	// apply after match window
+	// filter out only non-overlapping matches
+	// all rows per match, measures, final, ...
+
 	// we bind everything regarding match recognize in a child binder such that these bindings (e.g. of the input table)
 	// are hidden, and we can add a new binding for the input columns and the measures columns to the match recognize
 	// alias.
 	auto child_binder = Binder::CreateBinder(context, this);
 	auto child_node = child_binder->Bind(*ref.input);
-
 	auto &config = DBConfig::GetConfig(context);
-	// the expression_binder needs the child_binder as its parent to reference to columns of the input table
-	ExpressionBinder expression_binder(*child_binder, context);
 
-	// window
-	// filter
-	// window
-	// filter
-
-	// new window expression type
-
-	// re turn boundMatchrecognize ref with logical plan inside
-	//
+	// Pattern Matching Window: return type
 	auto return_type = LogicalType::STRUCT({{"classifiers", LogicalType::LIST(LogicalType::VARCHAR)},
 	                                        {"complete", LogicalType::BOOLEAN},
 	                                        {"match_start", LogicalType::UBIGINT},
 	                                        {"match_end", LogicalType::UBIGINT}});
 
+	// Pattern Matching Window: window expression
 	auto window_expression =
 	    make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_MATCH_RECOGNIZE, return_type,
 	                                     MatchRecognizeFun::GetFunction(), make_uniq<MatchRecognizeFunctionData>());
 	window_expression->start = WindowBoundary::UNBOUNDED_PRECEDING;
 	window_expression->end = WindowBoundary::UNBOUNDED_FOLLOWING;
+
+	// the expression_binder needs the child_binder as its parent to reference to columns of the input table
+	ExpressionBinder expression_binder(*child_binder, context);
+
+	vector<unique_ptr<ParsedExpression>> partitions;
 	for (auto &expr : ref.config->partition_expressions) {
+		partitions.push_back(expr->Copy());
+	}
+
+	for (auto &expr : partitions) {
 		window_expression->partitions.push_back(expression_binder.Bind(expr));
 	}
 
@@ -185,6 +193,7 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 		window_expression->orders.emplace_back(type, null_order, expression_binder.Bind(order.expression));
 	}
 
+	// Pattern Matching Window: Define List
 	// we need to extract column refs, those that are used in defines become parameters of the window functions
 	// we should hand over the **bound** expressions
 	auto pattern_binder = Binder::CreateBinder(context);
@@ -203,18 +212,92 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	auto bound_pattern = pattern_binder_expr.Bind(ref.config->pattern);
 	window_expression->bind_info->Cast<MatchRecognizeFunctionData>().pattern = std::move(bound_pattern);
 
-	auto table_index = GenerateTableIndex();
-	auto window_operator = make_uniq<LogicalWindow>(table_index);
+	// Pattern Matching Window: Generate Table
+	auto table_index1 = GenerateTableIndex();
+	auto window_operator = make_uniq<LogicalWindow>(table_index1);
 	window_operator->expressions.push_back(std::move(window_expression));
 	window_operator->children.push_back(std::move(child_node.plan));
 	window_operator->ResolveOperatorTypes();
 
+	// Filter for complete matches
+	auto first_window_bindings = window_operator->GetColumnBindings();
+	auto bound_col_ref = make_uniq<BoundColumnRefExpression>("bound_col_ref", return_type,
+	                                                         first_window_bindings[first_window_bindings.size() - 1]);
+	unique_ptr<Expression> col_ref_expr = std::move(make_uniq<BoundExpression>(std::move(bound_col_ref))->expr);
+	auto bound_condition = CreateBoundStructExtract(context, std::move(col_ref_expr), "complete");
+
+	auto filter_complete_matches = make_uniq<LogicalFilter>(std::move(bound_condition));
+	filter_complete_matches->children.push_back(std::move(window_operator));
+	filter_complete_matches->ResolveOperatorTypes();
+
+	auto child_binder2 = Binder::CreateBinder(context, child_binder.get());
+	child_binder2->bind_context.AddGenericBinding(table_index1, "__match_recognize_w1", {"__w1_struct"}, {return_type});
+
+	// After Match Window
+	auto after_match_return_type = LogicalType::STRUCT({{"classifiers", LogicalType::LIST(LogicalType::VARCHAR)},
+	                                                    {"keep", LogicalType::BOOLEAN},
+	                                                    {"match_start", LogicalType::UBIGINT},
+	                                                    {"match_end", LogicalType::UBIGINT}});
+
+	auto after_match_window = make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_NON_OVERLAP_INTERVALS,
+	                                                           after_match_return_type, nullptr, nullptr);
+	after_match_window->start = WindowBoundary::UNBOUNDED_PRECEDING;
+	after_match_window->end = WindowBoundary::CURRENT_ROW_RANGE;
+
+	// TODO: Monday! continue debugging here: resulttype for expression binding is null and that seems to be a problem.
+	// It isn't earlier though. check what happens there. Maybe something else is wrong.
+	for (auto &expr : ref.config->partition_expressions) {
+		after_match_window->partitions.push_back(expression_binder.Bind(expr));
+	}
+
+	// After Match Window: actualize the implicit order by
+	auto first_filter_bindings = filter_complete_matches->GetColumnBindings();
+	auto bound_col_ref2 = make_uniq<BoundColumnRefExpression>("bound_col_ref2", return_type,
+	                                                          first_filter_bindings[first_filter_bindings.size() - 1]);
+	unique_ptr<Expression> col_ref_expr2 = std::move(make_uniq<BoundExpression>(std::move(bound_col_ref2))->expr);
+	unique_ptr<Expression> col_ref_expr3 = col_ref_expr2->Copy();
+	unique_ptr<Expression> col_ref_expr4 = col_ref_expr2->Copy();
+	auto low = CreateBoundStructExtract(context, std::move(col_ref_expr2), "match_start");
+	auto low2 = CreateBoundStructExtract(context, std::move(col_ref_expr3), "match_start");
+	auto high = CreateBoundStructExtract(context, std::move(col_ref_expr4), "match_end");
+	BoundOrderByNode order_node(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(low));
+	auto type = config.ResolveOrder(context, order_node.type);
+	auto null_order = config.ResolveNullOrder(context, type, order_node.null_order);
+	after_match_window->orders.emplace_back(type, null_order, std::move(order_node.expression));
+	after_match_window->children.push_back(std::move(low2));
+	after_match_window->children.push_back(std::move(high));
+
+	// Pattern Matching Window: Generate Table
+	auto table_index2 = GenerateTableIndex();
+	auto window_operator2 = make_uniq<LogicalWindow>(table_index2);
+	window_operator2->expressions.push_back(std::move(after_match_window));
+	window_operator2->children.push_back(std::move(filter_complete_matches));
+	window_operator2->ResolveOperatorTypes();
+
+	// Filter for non-overlapping matches
+	auto second_window_bindings = window_operator2->GetColumnBindings();
+	auto bound_col_ref3 = make_uniq<BoundColumnRefExpression>(
+	    "bound_col_ref3", after_match_return_type, second_window_bindings[second_window_bindings.size() - 1]);
+	unique_ptr<Expression> col_ref_expr5 = std::move(make_uniq<BoundExpression>(std::move(bound_col_ref3))->expr);
+	auto bound_condition2 = CreateBoundStructExtract(context, std::move(col_ref_expr5), "keep");
+
+	auto filter_non_overlapping_matches = make_uniq<LogicalFilter>(std::move(bound_condition2));
+	filter_non_overlapping_matches->children.push_back(std::move(window_operator2));
+	filter_non_overlapping_matches->ResolveOperatorTypes();
+
 	// add the measures columns or whatever we need to our internal match recognize table
-	child_binder->bind_context.AddGenericBinding(table_index, "__match_recognize_ref", {"__match_recognize_fun"},
-	                                             {return_type});
+	auto child_binder3 = Binder::CreateBinder(context, child_binder.get());
+	child_binder3->bind_context.AddGenericBinding(table_index2, "__match_recognize_ref", {"__match_recognize_fun"},
+	                                              {after_match_return_type});
+	vector<string> names;
+	vector<LogicalType> types;
+	child_binder->bind_context.GetTypesAndNames(names, types);
+	child_binder2->bind_context.GetTypesAndNames(names, types);
+	child_binder3->bind_context.GetTypesAndNames(names, types);
 
 	// TODO we need to stack more stuff on top of this operator
 
+	// Bind the match recognize alias in a subquery
 	string mr_alias;
 	if (ref.alias.empty()) {
 		auto index = unnamed_subquery_index++;
@@ -228,52 +311,29 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 
 	// put the match recognize tables into a subquery to hide the original data
 	// SELECT * FROM (input_table, window_operator) AS mr_alias
-	auto subquery_ptr = make_uniq<BoundSelectNode>();
-	auto &subquery = *subquery_ptr;
-	auto bindings = window_operator->GetColumnBindings();
-	vector<string> names;
-	vector<LogicalType> types;
-	child_binder->bind_context.GetTypesAndNames(names, types);
+	auto bindings = filter_non_overlapping_matches->GetColumnBindings();
+	vector<string> final_names;
+	vector<LogicalType> final_types;
+	child_binder->bind_context.GetTypesAndNames(final_names, final_types);
+	child_binder3->bind_context.GetTypesAndNames(final_names, final_types);
+	vector<unique_ptr<Expression>> select_expressions;
 
 	for (idx_t i = 0; i < bindings.size(); i++) {
-		auto col = make_uniq<BoundColumnRefExpression>(window_operator->types[i], bindings[i]);
-		subquery.select_list.push_back(std::move(col));
+		if (i == 4)
+			continue;
+		auto col = make_uniq<BoundColumnRefExpression>(StringUtil::Format("select%d", i), types[i], bindings[i]);
+		select_expressions.push_back(std::move(col));
 	}
 
-	BoundStatement from_statement;
-	from_statement.plan = std::move(window_operator);
-	from_statement.types = types;
-	from_statement.names = names;
-	subquery.from_table = std::move(from_statement);
-
-	// filter: add WHERE t.__match_recognize_fun.complete to only extract complete matches
-	// t.__match_recognize_fun
-	auto col_ref = make_uniq<BoundColumnRefExpression>(return_type, bindings[bindings.size() - 1]);
-	auto col_ref_be = make_uniq<BoundExpression>(std::move(col_ref));
-	unique_ptr<Expression> col_ref_expr = std::move(col_ref_be->expr);
-	// Struct extract: struct_extract(t.__match_recognize_fun, "complete")
-	auto struct_extract_expr = CreateBoundStructExtract(context, std::move(col_ref_expr), "complete");
-	// CAST(struct_extract(t.__match_recognize_fun, "complete") AS boolean)
-	// this feels very unnecessary as we know complete has type boolean but duckdb adds this cast as well if I actually
-	// add WHERE t.__match_recognize_fun.complete
-	//	GetCastFunctionInput get_input(context);
-	//	BoundCastInfo cast_function = CastFunctionSet::Get(context).GetCastFunction(struct_extract_expr->return_type,
-	//	                                                                            LogicalType::BOOLEAN, get_input);
-	//    unique_ptr<BoundCastExpression> cast_expr = make_uniq<BoundCastExpression>(std::move(struct_extract_expr),
-	//                                                                               LogicalType::BOOLEAN,
-	//                                                                               std::move(cast_function));
-	//    subquery->where_clause = std::move(cast_expr);
-	subquery.where_clause = std::move(struct_extract_expr);
-
-	// add the binding for the subquery
-	idx_t bind_index = GenerateTableIndex();
-	subquery.projection_index = bind_index;
-	bind_context.AddGenericBinding(bind_index, mr_alias, names, types);
+	auto table_index3 = GenerateTableIndex();
+	auto log_projection = make_uniq<LogicalProjection>(table_index3, std::move(select_expressions));
+	log_projection->children.push_back(std::move(filter_non_overlapping_matches));
+	bind_context.AddGenericBinding(table_index3, mr_alias, final_names, final_types);
 
 	BoundStatement result_statement;
-	result_statement.types = types;
-	result_statement.names = names;
-	result_statement.plan = this->CreatePlan(subquery);
+	result_statement.types = final_types;
+	result_statement.names = final_names;
+	result_statement.plan = std::move(log_projection);
 	return result_statement;
 }
 

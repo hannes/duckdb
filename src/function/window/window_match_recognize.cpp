@@ -158,8 +158,9 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 			auto &struct_entries = StructVector::GetEntries(gstate.result_vec);
 			// first entry is list of classifiers, TODO
 			struct_entries[1]->SetValue(partition_idx, Value::BOOLEAN(true));
-			struct_entries[2]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(partition_start)));
-			struct_entries[3]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(partition_idx)));
+			struct_entries[2]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(partition_idx)));
+			struct_entries[3]->SetValue(partition_idx,
+			                            Value::INTEGER(NumericCast<int32_t>(partition_idx < 4 ? 3 : partition_end)));
 		}
 
 		partition_start = payload_idx;
