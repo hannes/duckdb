@@ -53,6 +53,8 @@ public:
 	//! Offset and default expressions for WINDOW_LEAD and WINDOW_LAG functions
 	unique_ptr<Expression> offset_expr;
 	unique_ptr<Expression> default_expr;
+	//! inclusive expression for WINDOW_NON_OVERLAP_INTERVALS
+	unique_ptr<Expression> inclusive;
 
 	//! The set of argument ordering clauses
 	//! These are distinct from the frame ordering clauses e.g., the "x" in

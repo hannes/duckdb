@@ -76,6 +76,8 @@ public:
 	//! Offset and default expressions for WINDOW_LEAD and WINDOW_LAG functions
 	unique_ptr<ParsedExpression> offset_expr;
 	unique_ptr<ParsedExpression> default_expr;
+	//! flag for WINDOW_NON_OVERLAP function
+	unique_ptr<ParsedExpression> inclusive;
 
 	//! The set of argument ordering clauses
 	//! These are distinct from the frame ordering clauses e.g., the "x" in
@@ -132,6 +134,10 @@ public:
 		if (entry.default_expr.get()) {
 			result += ", ";
 			result += entry.default_expr->ToString();
+		}
+		if (entry.inclusive.get()) {
+			result += ", ";
+			result += entry.inclusive->ToString();
 		}
 		// ORDER BY arguments
 		if (!entry.arg_orders.empty()) {

@@ -61,14 +61,8 @@ static LogicalType ResolveWindowExpressionType(ExpressionType window_type, const
 	case ExpressionType::WINDOW_LAG:
 	case ExpressionType::WINDOW_FILL:
 		return child_types[0];
-	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS: {
-		child_list_t<LogicalType> child_types;
-		child_types.emplace_back("classifier", LogicalType::LIST(LogicalType::VARCHAR));
-		child_types.emplace_back("keep", LogicalType::BOOLEAN);
-		child_types.emplace_back("match_start", LogicalType::UBIGINT);
-		child_types.emplace_back("match_end", LogicalType::UBIGINT);
-		return LogicalType::STRUCT(child_types);
-	}
+	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS:
+		return LogicalType::BOOLEAN;
 	default:
 		throw InternalException("Unrecognized window expression type " + ExpressionTypeToString(window_type));
 	}
@@ -235,6 +229,7 @@ BindResult BaseSelectBinder::BindWindow(WindowExpression &window, idx_t depth) {
 	BindChild(window.end_expr, depth, error);
 	BindChild(window.offset_expr, depth, error);
 	BindChild(window.default_expr, depth, error);
+	BindChild(window.inclusive, depth, error);
 
 	for (auto &order : window.arg_orders) {
 		BindChild(order.expression, depth, error);
@@ -437,6 +432,7 @@ BindResult BaseSelectBinder::BindWindow(WindowExpression &window, idx_t depth) {
 	result->end_expr = CastWindowExpression(window.end_expr, end_type);
 	result->offset_expr = CastWindowExpression(window.offset_expr, LogicalType::BIGINT);
 	result->default_expr = CastWindowExpression(window.default_expr, result->return_type);
+	result->inclusive = CastWindowExpression(window.inclusive, LogicalType::BOOLEAN);
 	result->start = window.start;
 	result->end = window.end;
 	result->exclude_clause = window.exclude_clause;

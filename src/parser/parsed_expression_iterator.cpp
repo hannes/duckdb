@@ -142,6 +142,9 @@ void ParsedExpressionIterator::EnumerateChildren(
 		if (window_expr.default_expr) {
 			callback(window_expr.default_expr);
 		}
+		if (window_expr.inclusive) {
+			callback(window_expr.inclusive);
+		}
 		for (auto &order : window_expr.arg_orders) {
 			callback(order.expression);
 		}

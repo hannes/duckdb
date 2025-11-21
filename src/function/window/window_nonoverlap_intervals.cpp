@@ -15,64 +15,36 @@ public:
 	                                     const idx_t payload_count_p, const ValidityMask &partition_mask_p,
 	                                     const ValidityMask &order_mask_p)
 	    : WindowExecutorGlobalState(client, executor_p, payload_count_p, partition_mask_p, order_mask_p),
-	      compare_mode(IntervalCompareMode::EXCLUSIVE), result_vec(executor_p.wexpr.return_type, payload_count_p) {
-		FlatVector::Validity(result_vec).SetAllInvalid(payload_count_p);
-		D_ASSERT(result_vec.GetType().id() == LogicalTypeId::STRUCT);
-		auto &struct_entries = StructVector::GetEntries(result_vec);
-		// Initialize validity for all struct entries
-		for (idx_t i = 0; i < struct_entries.size(); i++) {
-			// If this is a list vector, properly initialize it
-			if (struct_entries[i]->GetType().id() == LogicalTypeId::LIST) {
-				// Initialize list entries to empty lists
-				auto list_data = FlatVector::GetData<list_entry_t>(*struct_entries[i]);
-				for (idx_t j = 0; j < payload_count_p; j++) {
-					list_data[j].offset = 0;
-					list_data[j].length = 0;
-				}
-				// Initialize child vector with size 0
-				ListVector::SetListSize(*struct_entries[i], 0);
-			}
-			FlatVector::Validity(*struct_entries[i]).SetAllInvalid(payload_count_p);
-		}
-
-		//		// first entry is list of classifiers
-		//		FlatVector::Validity(*struct_entries[0]).SetAllInvalid(payload_count_p);
-		//		FlatVector::Validity(*struct_entries[1]).SetAllInvalid(payload_count_p);
-		//		FlatVector::Validity(*struct_entries[2]).SetAllInvalid(payload_count_p);
-		//		FlatVector::Validity(*struct_entries[3]).SetAllInvalid(payload_count_p);
+	      compare_mode(IntervalCompareMode::EXCLUSIVE) {
 	};
 
 	IntervalCompareMode compare_mode;
 	unordered_map<idx_t, uint64_t> last_end;
-	Vector result_vec;
 };
 
 class WindowNonOverlapIntervalsLocalState : public WindowExecutorBoundsLocalState {
 public:
 	explicit WindowNonOverlapIntervalsLocalState(ExecutionContext &context,
 	                                             const WindowNonOverlapIntervalsGlobalState &grstate)
-	    : WindowExecutorBoundsLocalState(context, grstate) { // grstate(grstate)
-	}
+	    : WindowExecutorBoundsLocalState(context, grstate) {}
 
-	// Store last interval in global state
 	void Sink(ExecutionContext &context, DataChunk &sink_chunk, DataChunk &coll_chunk, idx_t input_idx,
-	          OperatorSinkInput &sink) override {
+	          OperatorSinkInput &sink) override {};
 
-	};
-
-	//! Finish the sinking and prepare to scan
 	void Finalize(ExecutionContext &context, CollectionPtr collection, OperatorSinkInput &sink) override {};
 
-	//	//! The corresponding global peer state
-	//	const WindowNonOverlapIntervalsGlobalState &grstate;
 };
 
+//===--------------------------------------------------------------------===//
+// WindowNonOverlapIntervalsExecutor
+//===--------------------------------------------------------------------===//
 WindowNonOverlapIntervalsExecutor::WindowNonOverlapIntervalsExecutor(BoundWindowExpression &wexpr,
                                                                      WindowSharedExpressions &shared)
     : WindowExecutor(wexpr, shared) {
 	// Register children for evaluation
-	start_idx = shared.RegisterEvaluate(wexpr.children[0]); // match_start
-	end_idx = shared.RegisterEvaluate(wexpr.children[1]);   // match_end
+	low_idx = shared.RegisterEvaluate(wexpr.children[0]);
+	high_idx = shared.RegisterEvaluate(wexpr.children[1]);
+	inclusive_idx = shared.RegisterEvaluate(wexpr.inclusive);
 }
 
 unique_ptr<GlobalSinkState> WindowNonOverlapIntervalsExecutor::GetGlobalState(ClientContext &client,
@@ -87,58 +59,56 @@ void WindowNonOverlapIntervalsExecutor::EvaluateInternal(ExecutionContext &conte
                                                          OperatorSinkInput &sink) const {
 	auto &gstate = sink.global_state.Cast<WindowNonOverlapIntervalsGlobalState>();
 	auto &lstate = sink.local_state.Cast<WindowNonOverlapIntervalsLocalState>();
-
-	auto start_data = FlatVector::GetData<uint64_t>(eval_chunk.data[start_idx]);
-	auto end_data = FlatVector::GetData<uint64_t>(eval_chunk.data[end_idx]);
-	//    auto rdata= FlatVector::GetData<bool>(result);
+	auto rdata= FlatVector::GetData<bool>(result);
 
 	// Bounds for current partition
 	auto partition_begin = FlatVector::GetData<const idx_t>(lstate.bounds.data[PARTITION_BEGIN]);
-	auto partition_end = FlatVector::GetData<const idx_t>(lstate.bounds.data[PARTITION_END]);
 
-	for (idx_t partition_idx = 0; partition_idx < count; ++partition_idx, ++row_idx) {
-		auto pbegin = partition_begin[partition_idx];
-		auto pend = partition_end[partition_idx];
+	// Data from our arguments: intervals(low, high)
+	auto low  = FlatVector::GetData<uint64_t>(eval_chunk.data[low_idx]);
+	auto high = FlatVector::GetData<uint64_t>(eval_chunk.data[high_idx]);
 
-		FlatVector::Validity(gstate.result_vec).SetValid(row_idx);
-		auto &struct_entries = StructVector::GetEntries(gstate.result_vec);
-		struct_entries[0]->SetValue(partition_idx, Value::LIST(LogicalType::VARCHAR, {}));
-		struct_entries[2]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(partition_idx)));
-		struct_entries[3]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(partition_idx < 4 ? 3 : pend)));
+	auto incl = false;
+	if (inclusive_idx < eval_chunk.data.size()){
+		WindowInputExpression incl_expr(eval_chunk, inclusive_idx);
+		incl = incl_expr.GetCell<bool>(0);
+	}
+	if (incl || gstate.compare_mode == IntervalCompareMode::INCLUSIVE){
+		gstate.compare_mode = IntervalCompareMode::INCLUSIVE;
+	} else {
+		gstate.compare_mode = IntervalCompareMode::EXCLUSIVE;
+	}
+
+	// i = index within chunk, row_idx = global index/offset
+	for (idx_t i = 0; i < count; ++i) {
+		auto pbegin = partition_begin[i];
 
 		// pick first interval in partition
 		bool keep = false;
-		if (row_idx == pbegin) {
+		if (row_idx + i == pbegin) {
 			keep = true;
-			gstate.last_end[pbegin] = end_data[partition_idx];
+			gstate.last_end[pbegin] = high[i];
 		} else {
 			// pick next interval that does not overlap
 			auto prev_end = gstate.last_end[pbegin];
 			switch (gstate.compare_mode) {
 			case IntervalCompareMode::INCLUSIVE:
-				if (start_data[row_idx] >= prev_end) {
+				if (low[i] >= prev_end) {
 					keep = true;
-					gstate.last_end[pbegin] = end_data[partition_idx];
+					gstate.last_end[pbegin] = high[i];
 				}
 				break;
 			case IntervalCompareMode::EXCLUSIVE:
-				if (start_data[row_idx] > prev_end) {
+				if (low[i] > prev_end) {
 					keep = true;
-					gstate.last_end[pbegin] = end_data[partition_idx];
+					gstate.last_end[pbegin] = high[i];
 				}
 				break;
 			}
 		}
-
-		struct_entries[1]->SetValue(partition_idx, Value::BOOLEAN(keep));
-		//        rdata[partition_idx] = keep; // mark interval to keep
+		// write result into result vector
+		rdata[i] = keep;
 	}
-	result.Reference(gstate.result_vec);
-}
-
-void WindowNonOverlapIntervalsExecutor::Finalize(ExecutionContext &context, CollectionPtr collection,
-                                                 OperatorSinkInput &sink) const {
-	// No merge needed: all data already appended to global collection
 }
 
 } // namespace duckdb

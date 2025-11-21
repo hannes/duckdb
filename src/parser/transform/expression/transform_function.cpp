@@ -270,12 +270,21 @@ unique_ptr<ParsedExpression> Transformer::TransformFuncCall(duckdb_libpgquery::P
 				if (children.size() > 3) {
 					throw ParserException("Incorrect number of parameters for function %s", lowercase_name);
 				}
-			} else if (win_fun_type == ExpressionType::WINDOW_NTH_VALUE ||
-			           win_fun_type == ExpressionType::WINDOW_NON_OVERLAP_INTERVALS) {
+			} else if (win_fun_type == ExpressionType::WINDOW_NTH_VALUE) {
 				if (children.size() > 1) {
 					expr->children.push_back(std::move(children[1]));
 				}
 				if (children.size() > 2) {
+					throw ParserException("Incorrect number of parameters for function %s", lowercase_name);
+				}
+			} else if (win_fun_type == ExpressionType::WINDOW_NON_OVERLAP_INTERVALS) {
+				if (children.size() > 1) {
+					expr->children.push_back(std::move(children[1]));
+				}
+				if (children.size() > 2) {
+					expr->inclusive = std::move(children[2]);
+				}
+				if (children.size() > 3) {
 					throw ParserException("Incorrect number of parameters for function %s", lowercase_name);
 				}
 			} else {

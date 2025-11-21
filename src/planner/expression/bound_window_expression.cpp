@@ -79,6 +79,9 @@ bool BoundWindowExpression::Equals(const BaseExpression &other_p) const {
 	    !Expression::Equals(offset_expr, other.offset_expr) || !Expression::Equals(default_expr, other.default_expr)) {
 		return false;
 	}
+	if (!Expression::Equals(inclusive, other.inclusive)){
+		return false;
+	}
 
 	return KeysAreCompatible(other);
 }
@@ -174,6 +177,7 @@ unique_ptr<Expression> BoundWindowExpression::Copy() const {
 	new_window->end_expr = end_expr ? end_expr->Copy() : nullptr;
 	new_window->offset_expr = offset_expr ? offset_expr->Copy() : nullptr;
 	new_window->default_expr = default_expr ? default_expr->Copy() : nullptr;
+	new_window->inclusive = inclusive ? inclusive->Copy() : nullptr;
 	new_window->ignore_nulls = ignore_nulls;
 	new_window->distinct = distinct;
 
@@ -205,6 +209,7 @@ void BoundWindowExpression::Serialize(Serializer &serializer) const {
 	serializer.WritePropertyWithDefault(209, "end_expr", end_expr, unique_ptr<Expression>());
 	serializer.WritePropertyWithDefault(210, "offset_expr", offset_expr, unique_ptr<Expression>());
 	serializer.WritePropertyWithDefault(211, "default_expr", default_expr, unique_ptr<Expression>());
+	serializer.WritePropertyWithDefault(215, "inclusive", inclusive, unique_ptr<Expression>());
 	serializer.WriteProperty(212, "exclude_clause", exclude_clause);
 	serializer.WriteProperty(213, "distinct", distinct);
 	serializer.WriteProperty(214, "arg_orders", arg_orders);
@@ -235,6 +240,7 @@ unique_ptr<Expression> BoundWindowExpression::Deserialize(Deserializer &deserial
 	deserializer.ReadPropertyWithExplicitDefault(209, "end_expr", result->end_expr, unique_ptr<Expression>());
 	deserializer.ReadPropertyWithExplicitDefault(210, "offset_expr", result->offset_expr, unique_ptr<Expression>());
 	deserializer.ReadPropertyWithExplicitDefault(211, "default_expr", result->default_expr, unique_ptr<Expression>());
+	deserializer.ReadPropertyWithExplicitDefault(215, "inclusive", result->inclusive, unique_ptr<Expression>());
 	deserializer.ReadProperty(212, "exclude_clause", result->exclude_clause);
 	deserializer.ReadProperty(213, "distinct", result->distinct);
 	deserializer.ReadPropertyWithExplicitDefault(214, "arg_orders", result->arg_orders, vector<BoundOrderByNode>());

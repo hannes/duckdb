@@ -1,7 +1,7 @@
 //===----------------------------------------------------------------------===//
 //                         DuckDB
 //
-// duckdb/function/window/window_match_recognize.hpp
+// duckdb/function/window/window_nonoverlap_intervals.hpp
 //
 //
 //===----------------------------------------------------------------------===//
@@ -20,18 +20,14 @@ public:
 	                                           const ValidityMask &partition_mask,
 	                                           const ValidityMask &order_mask) const override;
 
-	//	unique_ptr<LocalSinkState> GetLocalState(ExecutionContext &context, const GlobalSinkState &gstate) const
-	//override;
-
-	void Finalize(ExecutionContext &context, CollectionPtr collection, OperatorSinkInput &sink) const override;
+	column_t low_idx = DConstants::INVALID_INDEX;
+	column_t high_idx = DConstants::INVALID_INDEX;
+	column_t inclusive_idx = DConstants::INVALID_INDEX;
 
 protected:
 	void EvaluateInternal(ExecutionContext &context, DataChunk &eval_chunk, Vector &result, idx_t count, idx_t row_idx,
 	                      OperatorSinkInput &sink) const override;
 
-private:
-	column_t start_idx;
-	column_t end_idx;
 };
 
 } // namespace duckdb
