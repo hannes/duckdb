@@ -19,6 +19,7 @@ struct WindowMatchRecognizeGlobalState : WindowExecutorGlobalState {
 		FlatVector::Validity(*struct_entries[1]).SetAllInvalid(payload_count_p);
 		FlatVector::Validity(*struct_entries[2]).SetAllInvalid(payload_count_p);
 		FlatVector::Validity(*struct_entries[3]).SetAllInvalid(payload_count_p);
+		FlatVector::Validity(*struct_entries[4]).SetAllInvalid(payload_count_p);
 	};
 
 	// TODO can we get away with putting this into the local state?
@@ -161,6 +162,8 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 			struct_entries[2]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(partition_idx)));
 			struct_entries[3]->SetValue(partition_idx,
 			                            Value::INTEGER(NumericCast<int32_t>(partition_idx < 4 ? 3 : partition_end)));
+			struct_entries[4]->SetValue(partition_idx,
+			                            Value::INTEGER(NumericCast<int32_t>(partition_idx < 2 ? 2 : partition_idx < 4 ? 3 : partition_idx < 6 ? 5 : partition_end)));
 		}
 
 		partition_start = payload_idx;
