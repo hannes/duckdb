@@ -163,7 +163,10 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 			struct_entries[3]->SetValue(partition_idx,
 			                            Value::INTEGER(NumericCast<int32_t>(partition_idx < 4 ? 3 : partition_end)));
 			struct_entries[4]->SetValue(partition_idx,
-			                            Value::INTEGER(NumericCast<int32_t>(partition_idx < 2 ? 2 : partition_idx < 4 ? 3 : partition_idx < 6 ? 5 : partition_end)));
+			                            Value::INTEGER(NumericCast<int32_t>(partition_idx < 2   ? 2
+			                                                                : partition_idx < 4 ? 3
+			                                                                : partition_idx < 6 ? 5
+			                                                                                    : partition_end)));
 		}
 
 		partition_start = payload_idx;

@@ -15,8 +15,7 @@ public:
 	                                     const idx_t payload_count_p, const ValidityMask &partition_mask_p,
 	                                     const ValidityMask &order_mask_p)
 	    : WindowExecutorGlobalState(client, executor_p, payload_count_p, partition_mask_p, order_mask_p),
-	      compare_mode(IntervalCompareMode::EXCLUSIVE) {
-	};
+	      compare_mode(IntervalCompareMode::EXCLUSIVE) {};
 
 	IntervalCompareMode compare_mode;
 	unordered_map<idx_t, uint64_t> last_end;
@@ -26,13 +25,13 @@ class WindowNonOverlapIntervalsLocalState : public WindowExecutorBoundsLocalStat
 public:
 	explicit WindowNonOverlapIntervalsLocalState(ExecutionContext &context,
 	                                             const WindowNonOverlapIntervalsGlobalState &grstate)
-	    : WindowExecutorBoundsLocalState(context, grstate) {}
+	    : WindowExecutorBoundsLocalState(context, grstate) {
+	}
 
 	void Sink(ExecutionContext &context, DataChunk &sink_chunk, DataChunk &coll_chunk, idx_t input_idx,
 	          OperatorSinkInput &sink) override {};
 
 	void Finalize(ExecutionContext &context, CollectionPtr collection, OperatorSinkInput &sink) override {};
-
 };
 
 //===--------------------------------------------------------------------===//
@@ -59,21 +58,21 @@ void WindowNonOverlapIntervalsExecutor::EvaluateInternal(ExecutionContext &conte
                                                          OperatorSinkInput &sink) const {
 	auto &gstate = sink.global_state.Cast<WindowNonOverlapIntervalsGlobalState>();
 	auto &lstate = sink.local_state.Cast<WindowNonOverlapIntervalsLocalState>();
-	auto rdata= FlatVector::GetData<bool>(result);
+	auto rdata = FlatVector::GetData<bool>(result);
 
 	// Bounds for current partition
 	auto partition_begin = FlatVector::GetData<const idx_t>(lstate.bounds.data[PARTITION_BEGIN]);
 
 	// Data from our arguments: intervals(low, high)
-	auto low  = FlatVector::GetData<uint64_t>(eval_chunk.data[low_idx]);
+	auto low = FlatVector::GetData<uint64_t>(eval_chunk.data[low_idx]);
 	auto high = FlatVector::GetData<uint64_t>(eval_chunk.data[high_idx]);
 
 	auto incl = false;
-	if (inclusive_idx < eval_chunk.data.size()){
+	if (inclusive_idx < eval_chunk.data.size()) {
 		WindowInputExpression incl_expr(eval_chunk, inclusive_idx);
 		incl = incl_expr.GetCell<bool>(0);
 	}
-	if (incl || gstate.compare_mode == IntervalCompareMode::INCLUSIVE){
+	if (incl || gstate.compare_mode == IntervalCompareMode::INCLUSIVE) {
 		gstate.compare_mode = IntervalCompareMode::INCLUSIVE;
 	} else {
 		gstate.compare_mode = IntervalCompareMode::EXCLUSIVE;
