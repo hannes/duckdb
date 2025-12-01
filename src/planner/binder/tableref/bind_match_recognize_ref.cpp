@@ -365,7 +365,8 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 		if (!is_skip_to_next_row && i == bindings.size() - 1) {
 			continue;
 		}
-		auto col = make_uniq<BoundColumnRefExpression>(StringUtil::Format("select%d", i), types[i], bindings[i]);
+		auto col =
+		    make_uniq<BoundColumnRefExpression>(StringUtil::Format("select%d", i), last_filter->types[i], bindings[i]);
 		select_expressions.push_back(std::move(col));
 	}
 
