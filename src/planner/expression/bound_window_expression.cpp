@@ -79,7 +79,7 @@ bool BoundWindowExpression::Equals(const BaseExpression &other_p) const {
 	    !Expression::Equals(offset_expr, other.offset_expr) || !Expression::Equals(default_expr, other.default_expr)) {
 		return false;
 	}
-	if (!Expression::Equals(inclusive, other.inclusive)){
+	if (!Expression::Equals(inclusive, other.inclusive)) {
 		return false;
 	}
 

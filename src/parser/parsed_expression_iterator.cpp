@@ -2,6 +2,7 @@
 
 #include "duckdb/parser/expression/list.hpp"
 #include "duckdb/parser/query_node.hpp"
+#include "duckdb/parser/expression/pattern_expression.hpp"
 #include "duckdb/parser/query_node/cte_node.hpp"
 #include "duckdb/parser/query_node/recursive_cte_node.hpp"
 #include "duckdb/parser/query_node/select_node.hpp"
@@ -158,6 +159,33 @@ void ParsedExpressionIterator::EnumerateChildren(
 	case ExpressionClass::PARAMETER:
 	case ExpressionClass::POSITIONAL_REFERENCE:
 		// these node types have no children
+		break;
+	case ExpressionClass::PATTERN:
+		// 	switch (expr.type) {
+		// 	case ExpressionType::CONCATENATION: {
+		// 		auto &concat_expr = expr.Cast<ConcatenationExpression>();
+		// 		for (auto &child : concat_expr.children) {
+		// 			callback(child);
+		// 		}
+		//
+		// 		break;
+		// 	}
+		// 	case ExpressionType::ALTERNATION:{
+		// 		auto &alt_expr = expr.Cast<AlternationExpression>();
+		// 		callback(alt_expr.child_left);
+		// 		callback(alt_expr.child_right);
+		//
+		// 			break;
+		// 	}
+		// 	case ExpressionType::QUANTIFIER:{
+		// 		auto &quant_expr = expr.Cast<QuantifiedExpression>();
+		// 		callback(quant_expr.child);
+		// 		break;
+		// }
+		// 	default:
+		// 		throw NotImplementedException("Unimplemented expression type %s", ExpressionTypeToString(expr.type));
+		// 	}
+		// these children need special handling
 		break;
 	default:
 		// called on non ParsedExpression type!

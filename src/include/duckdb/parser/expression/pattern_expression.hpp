@@ -31,7 +31,11 @@ public:
 	}
 
 	unique_ptr<ParsedExpression> Copy() const {
-		throw NotImplementedException("eeek");
+		vector<unique_ptr<ParsedExpression>> new_children;
+		for (auto &child : children) {
+			new_children.push_back(child->Copy());
+		}
+		return make_uniq<ConcatenationExpression>(std::move(new_children));
 	}
 
 	vector<unique_ptr<ParsedExpression>> children;
@@ -69,7 +73,7 @@ public:
 	}
 
 	unique_ptr<ParsedExpression> Copy() const {
-		throw NotImplementedException("eeek");
+		return make_uniq<QuantifiedExpression>(child->Copy(), min_count, max_count);
 	}
 	unique_ptr<ParsedExpression> child;
 

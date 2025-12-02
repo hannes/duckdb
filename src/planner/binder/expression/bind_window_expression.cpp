@@ -3,6 +3,7 @@
 #include "duckdb/function/function_binder.hpp"
 #include "duckdb/main/config.hpp"
 #include "duckdb/catalog/catalog_entry/scalar_macro_catalog_entry.hpp"
+#include "duckdb/function/match_recognize.hpp"
 #include "duckdb/main/database.hpp"
 #include "duckdb/parser/expression/constant_expression.hpp"
 #include "duckdb/parser/expression/function_expression.hpp"
@@ -38,6 +39,10 @@ static LogicalType ResolveWindowExpressionType(ExpressionType window_type, const
 	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS:
 		param_count = 2;
 		break;
+	case ExpressionType::WINDOW_MATCH_RECOGNIZE:
+		param_count = child_types.size();
+		break;
+
 	default:
 		throw InternalException("Unrecognized window expression type " + ExpressionTypeToString(window_type));
 	}
@@ -63,6 +68,13 @@ static LogicalType ResolveWindowExpressionType(ExpressionType window_type, const
 		return child_types[0];
 	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS:
 		return LogicalType::BOOLEAN;
+	case ExpressionType::WINDOW_MATCH_RECOGNIZE:
+		return LogicalType::STRUCT({{"classifiers", LogicalType::LIST(LogicalType::VARCHAR)},
+		                            {"complete", LogicalType::BOOLEAN},
+		                            {"match_start", LogicalType::UBIGINT},
+		                            {"match_end", LogicalType::UBIGINT},
+		                            {"skip_to", LogicalType::UBIGINT}});
+
 	default:
 		throw InternalException("Unrecognized window expression type " + ExpressionTypeToString(window_type));
 	}
@@ -261,6 +273,10 @@ BindResult BaseSelectBinder::BindWindow(WindowExpression &window, idx_t depth) {
 	vector<unique_ptr<Expression>> children;
 	for (auto &child : window.children) {
 		D_ASSERT(child.get());
+		// for MATCH_RECOGNIZE pattern variables we don't actually add a child.
+		if (child->expression_class == ExpressionClass::PATTERN) {
+			continue;
+		}
 		D_ASSERT(child->GetExpressionClass() == ExpressionClass::BOUND_EXPRESSION);
 		auto &bound = BoundExpression::GetExpression(*child);
 		// Add casts for positional arguments
@@ -437,11 +453,24 @@ BindResult BaseSelectBinder::BindWindow(WindowExpression &window, idx_t depth) {
 	result->end = window.end;
 	result->exclude_clause = window.exclude_clause;
 
+	// very special case for MATCH_RECOGNIZE, the last child has our pattern variable that we have to shove into the
+	// function data instead
+	if (result->type == ExpressionType::WINDOW_MATCH_RECOGNIZE) {
+		D_ASSERT(!window.children.empty());
+		auto pattern_child = result->children.back()->Copy(); // TODO
+		result->children.pop_back();
+
+		auto mr_bind_data = make_uniq<MatchRecognizeFunctionData>();
+		mr_bind_data->pattern = std::move(pattern_child);
+		result->bind_info = std::move(mr_bind_data);
+	}
+
 	// create a BoundColumnRef that references this entry
 	auto colref = make_uniq<BoundColumnRefExpression>(std::move(name), result->return_type,
 	                                                  ColumnBinding(node.window_index, node.windows.size()), depth);
 	// move the WINDOW expression into the set of bound windows
 	node.windows.push_back(std::move(result));
+
 	return BindResult(std::move(colref));
 }
 

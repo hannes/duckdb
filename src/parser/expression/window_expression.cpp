@@ -30,6 +30,7 @@ WindowExpression::WindowExpression(ExpressionType type, string catalog_name, str
 	case ExpressionType::WINDOW_NTILE:
 	case ExpressionType::WINDOW_FILL:
 	case ExpressionType::WINDOW_NON_OVERLAP_INTERVALS:
+	case ExpressionType::WINDOW_MATCH_RECOGNIZE:
 		break;
 	default:
 		throw NotImplementedException("Window aggregate type %s not supported", ExpressionTypeToString(type).c_str());
@@ -53,6 +54,8 @@ static const WindowFunctionDefinition internal_window_functions[] = {
     {"ntile", ExpressionType::WINDOW_NTILE},
     {"fill", ExpressionType::WINDOW_FILL},
     {"intervals", ExpressionType::WINDOW_NON_OVERLAP_INTERVALS},
+    {"match_recognize", ExpressionType::WINDOW_MATCH_RECOGNIZE},
+
     {nullptr, ExpressionType::INVALID}};
 
 const WindowFunctionDefinition *WindowExpression::WindowFunctions() {

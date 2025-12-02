@@ -52,10 +52,11 @@ WindowMatchRecognizeExecutor::WindowMatchRecognizeExecutor(BoundWindowExpression
 		auto new_index = shared.RegisterCollection(child, /* this seems to not matter for the partition_mask */ false);
 		replacement_map[expr_idx] = new_index;
 	}
-	auto &define_expressions = wexpr.bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list;
-	for (auto &define_expression : define_expressions) {
-		UpdateColumnBindings(define_expression, replacement_map);
-	}
+	// TODO
+	// auto &define_expressions = wexpr.bind_info->Cast<MatchRecognizeFunctionData>().defines_expression_list;
+	// for (auto &define_expression : define_expressions) {
+	// 	UpdateColumnBindings(define_expression, replacement_map);
+	// }
 }
 
 unique_ptr<GlobalSinkState> WindowMatchRecognizeExecutor::GetGlobalState(ClientContext &client,
@@ -119,32 +120,20 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 
 	auto &config = wexpr.bind_info->Cast<MatchRecognizeFunctionData>();
 
-	ExpressionExecutor define_executor(context.client, config.defines_expression_list);
-
-	vector<LogicalType> define_result_chunk_types;
-	for (auto &def_expr : config.defines_expression_list) {
-		define_result_chunk_types.push_back(def_expr->return_type);
-	}
-
 	idx_t partition_start = 0;
 	// we always start with a new partition
 	D_ASSERT(gstate.partition_mask.RowIsValid(0));
-
-	// TODO figure out biggest partition size before, payload count is upper bound but overkill
-	DataChunk define_result_chunk;
-	define_result_chunk.Initialize(context.client, define_result_chunk_types, gstate.payload_count);
 
 	for (idx_t payload_idx = 1; payload_idx < gstate.payload_count; payload_idx++) {
 		if (!gstate.partition_mask.RowIsValid(payload_idx) && payload_idx + 1 < gstate.payload_count) {
 			continue;
 		}
-		define_result_chunk.SetCardinality(0);
 
 		// the partition end offset depends on whether we found a next partition or if we are at the end
 		auto partition_end =
 		    payload_idx + 1 == gstate.partition_mask.RowIsValid(payload_idx) ? payload_idx - 1 : payload_idx;
-		FetchPartitionAndExecute(context.client, *collection->inputs, define_executor, define_result_chunk,
-		                         partition_start, partition_end);
+		// FetchPartitionAndExecute(context.client, *collection->inputs, define_executor, define_result_chunk,
+		//                          partition_start, partition_end);
 
 		config.pattern->Print();
 		// define_result_chunk.Print();
@@ -163,7 +152,10 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 			struct_entries[3]->SetValue(partition_idx,
 			                            Value::INTEGER(NumericCast<int32_t>(partition_idx < 4 ? 3 : partition_end)));
 			struct_entries[4]->SetValue(partition_idx,
-			                            Value::INTEGER(NumericCast<int32_t>(partition_idx < 2 ? 2 : partition_idx < 4 ? 3 : partition_idx < 6 ? 5 : partition_end)));
+			                            Value::INTEGER(NumericCast<int32_t>(partition_idx < 2   ? 2
+			                                                                : partition_idx < 4 ? 3
+			                                                                : partition_idx < 6 ? 5
+			                                                                                    : partition_end)));
 		}
 
 		partition_start = payload_idx;

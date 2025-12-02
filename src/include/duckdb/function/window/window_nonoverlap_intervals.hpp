@@ -27,7 +27,6 @@ public:
 protected:
 	void EvaluateInternal(ExecutionContext &context, DataChunk &eval_chunk, Vector &result, idx_t count, idx_t row_idx,
 	                      OperatorSinkInput &sink) const override;
-
 };
 
 } // namespace duckdb
