@@ -96,7 +96,7 @@ public:
 	}
 
 	unique_ptr<ParsedExpression> Copy() const {
-		throw NotImplementedException("eeek");
+		return make_uniq<AlternationExpression>(child_left->Copy(), child_right->Copy());
 	}
 	// TODO should this be a child list too?
 	unique_ptr<ParsedExpression> child_left;
