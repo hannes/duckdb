@@ -116,7 +116,7 @@ from test MATCH_RECOGNIZE(
     ORDER BY o
     MEASURES A.v AS a_val, B.v as b_val
     PATTERN (A B)
-    DEFINE A as v/10 > 0.12 , B as (v2-10)/10 > 0.22)
+    DEFINE A as v/10 > 0.12 , B as (v2-10)/10 > 0.22) order by p,o
 ----
 1	1	1.1	10.1	false	false	{'classifiers': NULL, 'complete': true, 'match_start': 0, 'match_end': 3, 'skip_to': 2}
 2	1	2.1	20.1	true	true	{'classifiers': NULL, 'complete': true, 'match_start': 0, 'match_end': 3, 'skip_to': 2}
