@@ -181,6 +181,13 @@ static void ReplaceFunctions(unique_ptr<ParsedExpression> &expr, const WindowExp
 	    *expr, [&](unique_ptr<ParsedExpression> &child) { ReplaceFunctions(child, pattern_window); });
 }
 
+static unique_ptr<ParsedExpression> CreateStructExtract(const string &column_name, const string &child_name) {
+	vector<unique_ptr<ParsedExpression>> children;
+	children.push_back(make_uniq<ColumnRefExpression>(column_name));
+	children.push_back(make_uniq<ConstantExpression>(child_name));
+	return make_uniq<FunctionExpression>("struct_extract", std::move(children));
+}
+
 BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	// Steps:
 	// binding+planning input table
@@ -191,9 +198,8 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	// todo: all rows per match, measures, final, ...
 	// final projection that hides intermediate structures
 
-	auto subquery = std::move(ref.input);
 	auto select_node = make_uniq<SelectNode>();
-	select_node->from_table = std::move(subquery);
+	select_node->from_table = std::move(ref.input);
 	select_node->select_list.push_back(make_uniq<StarExpression>());
 
 	// Pattern Matching Window: placeholder window expression
@@ -238,18 +244,9 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	define_select->node = std::move(define_select_node);
 	select_node->from_table = make_uniq<SubqueryRef>(std::move(define_select));
 	pattern_window->alias = "__pattern_window";
-
-	vector<unique_ptr<ParsedExpression>> qualify_children;
-	D_ASSERT(!pattern_window->alias.empty());
-	qualify_children.push_back(make_uniq<ColumnRefExpression>(pattern_window->alias));
-	qualify_children.push_back(make_uniq<ConstantExpression>("complete"));
-	select_node->qualify =
-	    make_uniq_base<ParsedExpression, FunctionExpression>("struct_extract", std::move(qualify_children));
-
 	select_node->select_list.push_back(std::move(pattern_window));
 
-	// Final Projection: collect names and types of all bindings present in our last operator
-	// we add more to names, types and bindings if we have an after match window
+	select_node->qualify = CreateStructExtract("__pattern_window", "complete");
 
 	// After Match skip option
 	bool is_skip_to_next_row =
@@ -257,84 +254,50 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	unique_ptr<LogicalFilter> last_filter = nullptr;
 
 	if (!is_skip_to_next_row) {
-		throw NotImplementedException("not implemented");
-		// TODO
 		// // After Match window
-		// auto after_match_return_type = LogicalType::BOOLEAN;
-		// auto after_match_window = make_uniq<BoundWindowExpression>(ExpressionType::WINDOW_NON_OVERLAP_INTERVALS,
-		// 														   after_match_return_type, nullptr, nullptr);
-		// after_match_window->start = WindowBoundary::UNBOUNDED_PRECEDING;
-		// after_match_window->end = WindowBoundary::CURRENT_ROW_RANGE;
-		//
-		// // bind same partitions to second window as well
-		// for (auto &expr : ref.config->partition_expressions) {
-		// 	after_match_window->partitions.push_back(expression_binder.Bind(expr));
-		// }
-		//
-		// // After Match Window: actualize the implicit ORDER BY
-		// // TODO: we could spare us some of this if the intervals window took the struct as input
-		// auto complete_filter_bindings = complete_filter->GetColumnBindings();
-		// auto pattern_struct_bound2 = make_uniq<BoundColumnRefExpression>(
-		// 	"pattern_struct_bound2", pattern_return_type, complete_filter_bindings[complete_filter_bindings.size() -
-		// 1]); unique_ptr<Expression> pattern_struct_expr2 =
-		// 	std::move(make_uniq<BoundExpression>(std::move(pattern_struct_bound2))->expr);
-		// unique_ptr<Expression> pattern_struct_expr3 = pattern_struct_expr2->Copy();
-		// unique_ptr<Expression> pattern_struct_expr4 = pattern_struct_expr2->Copy();
-		//
-		// // enforce ordering
-		// auto low = CreateBoundStructExtract(context, std::move(pattern_struct_expr2), "match_start");
-		// BoundOrderByNode order_node(OrderType::ASCENDING, OrderByNullType::NULLS_LAST, std::move(low));
-		// after_match_window->orders.emplace_back(order_node.type, order_node.null_order,
-		// std::move(order_node.expression));
-		//
-		// // lower interval bound: match_start
-		// auto low2 = CreateBoundStructExtract(context, std::move(pattern_struct_expr3), "match_start");
-		// after_match_window->children.push_back(std::move(low2));
-		//
-		// // upper interval bound: depends on the skip option
-		// switch (ref.config->after_match) {
-		// 	case MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_FIRST_VAR:
-		// 	case MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_LAST_VAR: {
-		// 		auto high = CreateBoundStructExtract(context, std::move(pattern_struct_expr4), "skip_to");
-		// 	    after_match_window->children.push_back(std::move(high));
-		// 		after_match_window->inclusive = make_uniq<BoundConstantExpression>(Value::BOOLEAN(true));
-		// 		break;
-		//     }
-		// 	case MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_LAST_ROW:
-		//     case MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_DEFAULT:
-		// 	default: {
-		// 		auto high = CreateBoundStructExtract(context, std::move(pattern_struct_expr4), "match_end");
-		// 	    after_match_window->children.push_back(std::move(high));
-		// 		after_match_window->inclusive = make_uniq<BoundConstantExpression>(Value::BOOLEAN(false));
-		// 		break;
-		//     }
-		// }
-		//
-		// // Pattern Matching Window: Generate Table
-		// auto after_match_table_index = GenerateTableIndex();
-		// auto after_match_window_operator = make_uniq<LogicalWindow>(after_match_table_index);
-		// after_match_window_operator->expressions.push_back(std::move(after_match_window));
-		// after_match_window_operator->children.push_back(std::move(complete_filter));
-		// after_match_window_operator->ResolveOperatorTypes();
-		//
-		// auto after_match_binder = Binder::CreateBinder(context, child_binder.get());
-		// after_match_binder->bind_context.AddGenericBinding(after_match_table_index,
-		// "__match_recognize_after_match_window",
-		// 												   {"__after_match_window_bool"}, {after_match_return_type});
-		//
-		// // Filter for non-overlapping matches
-		// auto after_match_window_bindings = after_match_window_operator->GetColumnBindings();
-		// auto after_match_keep =
-		// 	make_uniq<BoundColumnRefExpression>("after_match_keep", after_match_return_type,
-		// 										after_match_window_bindings[after_match_window_bindings.size() - 1]);
-		// auto no_overlap_filter = make_uniq<LogicalFilter>(std::move(after_match_keep));
-		// no_overlap_filter->children.push_back(std::move(after_match_window_operator));
-		// no_overlap_filter->ResolveOperatorTypes();
-		//
-		// // add
-		// after_match_binder->bind_context.GetTypesAndNames(names, types);
-		// bindings = no_overlap_filter->GetColumnBindings();
-		// last_filter = std::move(no_overlap_filter);
+		auto after_match_window = make_uniq<WindowExpression>(ExpressionType::WINDOW_NON_OVERLAP_INTERVALS, "", "",
+		                                                      "window_non_overlap_intervals");
+		after_match_window->start = WindowBoundary::UNBOUNDED_PRECEDING;
+		after_match_window->end = WindowBoundary::CURRENT_ROW_RANGE;
+
+		// bind same partitions to second window as well
+		for (auto &expr : ref.config->partition_expressions) {
+			after_match_window->partitions.push_back(expr->Copy());
+		}
+
+		// enforce ordering
+		auto low = CreateStructExtract("__pattern_window", "match_start");
+		after_match_window->children.push_back(std::move(low));
+
+		after_match_window->alias = "__after_match_window";
+
+		// upper interval bound: depends on the skip option
+		switch (ref.config->after_match) {
+		case MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_FIRST_VAR:
+		case MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_LAST_VAR: {
+			auto high = CreateStructExtract("__pattern_window", "skip_to");
+			after_match_window->children.push_back(std::move(high));
+			after_match_window->inclusive = make_uniq<ConstantExpression>(Value::BOOLEAN(true));
+			break;
+		}
+		case MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_LAST_ROW:
+		case MatchRecognizeAfterMatch::MATCH_RECOGNIZE_AFTER_MATCH_DEFAULT:
+		default: {
+			auto high = CreateStructExtract("__pattern_window", "match_end");
+			after_match_window->children.push_back(std::move(high));
+			after_match_window->inclusive = make_uniq<ConstantExpression>(Value::BOOLEAN(false));
+			break;
+		}
+		}
+
+		auto skip_node = make_uniq<SelectNode>();
+		auto skip_select = make_uniq<SelectStatement>();
+		skip_select->node = std::move(select_node);
+		skip_node->from_table = make_uniq<SubqueryRef>(std::move(skip_select));
+		skip_node->select_list.push_back(make_uniq<StarExpression>()); // TODO ??
+		skip_node->qualify = std::move(after_match_window);
+
+		select_node = std::move(skip_node);
 	}
 
 	// TODO we need to stack more stuff on top of this operator
@@ -367,7 +330,9 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 
 	auto child_binder = Binder::CreateBinder(context, this);
 	auto result = child_binder->Bind(*select_node);
-	bind_context.AddGenericBinding(result.plan->GetRootIndex(), "__match_recognize_table", result.names, result.types);
+	bind_context.AddGenericBinding(result.plan->GetRootIndex(),
+	                               !ref.alias.empty() ? ref.alias : "__match_recognize_table", result.names,
+	                               result.types);
 	return result;
 }
 
