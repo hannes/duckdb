@@ -221,7 +221,7 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	define_select_node->select_list.push_back(make_uniq<StarExpression>());
 
 	// we use this window function as a template for order, partition, and boundaries
-	D_ASSERT(pattern_window->children.empty());
+	D_ASSERT(pattern_window->children.empty()); // for now
 	auto window_template = pattern_window->Copy();
 
 	for (auto &expr : ref.config->defines_expression_list) {
@@ -236,20 +236,17 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 
 	auto define_select = make_uniq<SelectStatement>();
 	define_select->node = std::move(define_select_node);
-
 	select_node->from_table = make_uniq<SubqueryRef>(std::move(define_select));
-
 	pattern_window->alias = "__pattern_window";
-	select_node->select_list.push_back(std::move(pattern_window));
-
-	// TODO do something with pattern
-	// auto bound_pattern = pattern_expr_binder.Bind(ref.config->pattern);
 
 	vector<unique_ptr<ParsedExpression>> qualify_children;
-	qualify_children.push_back(make_uniq<ColumnRefExpression>("__pattern_window"));
+	D_ASSERT(!pattern_window->alias.empty());
+	qualify_children.push_back(make_uniq<ColumnRefExpression>(pattern_window->alias));
 	qualify_children.push_back(make_uniq<ConstantExpression>("complete"));
 	select_node->qualify =
 	    make_uniq_base<ParsedExpression, FunctionExpression>("struct_extract", std::move(qualify_children));
+
+	select_node->select_list.push_back(std::move(pattern_window));
 
 	// Final Projection: collect names and types of all bindings present in our last operator
 	// we add more to names, types and bindings if we have an after match window

@@ -7,6 +7,7 @@
 #include "duckdb/planner/expression/bound_expanded_expression.hpp"
 #include "duckdb/planner/expression/bound_function_expression.hpp"
 #include "duckdb/planner/expression/bound_parameter_expression.hpp"
+#include "duckdb/planner/expression_binder/aggregate_binder.hpp"
 #include "duckdb/planner/expression_binder/select_binder.hpp"
 #include "duckdb/planner/query_node/bound_select_node.hpp"
 #include "duckdb/planner/expression/bound_unnest_expression.hpp"
@@ -15,17 +16,16 @@
 #include "duckdb/execution/expression_executor.hpp"
 #include "duckdb/planner/expression/bound_cast_expression.hpp"
 #include "duckdb/main/settings.hpp"
-#include "duckdb/planner/expression_binder.hpp"
 
 namespace duckdb {
 
-unique_ptr<Expression> CreateBoundStructExtract(ClientContext &context, unique_ptr<Expression> expr,
-                                                const vector<string> &key_path, bool keep_parent_names) {
+static unique_ptr<Expression> CreateBoundStructExtract(ClientContext &context, unique_ptr<Expression> expr,
+                                                       const vector<string> &key_path, bool keep_parent_names) {
 	vector<unique_ptr<Expression>> arguments;
 	arguments.push_back(std::move(expr));
 	arguments.push_back(make_uniq<BoundConstantExpression>(Value(key_path.back())));
 	auto extract_function = GetKeyExtractFunction();
-	auto bind_info = extract_function.bind(context, extract_function, arguments);
+	auto bind_info = extract_function.GetBindCallback()(context, extract_function, arguments);
 	auto return_type = extract_function.GetReturnType();
 	auto result = make_uniq<BoundFunctionExpression>(return_type, std::move(extract_function), std::move(arguments),
 	                                                 std::move(bind_info));

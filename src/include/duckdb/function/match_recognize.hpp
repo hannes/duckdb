@@ -25,7 +25,6 @@ struct MatchRecognizeFunctionData : FunctionData {
 	}
 	bool Equals(const FunctionData &other_p) const override {
 		auto &other = other_p.Cast<MatchRecognizeFunctionData>();
-		auto pattern_equal = other.pattern->Equals(*pattern);
 		return other.pattern->Equals(*pattern);
 	}
 };

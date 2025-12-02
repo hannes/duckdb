@@ -249,6 +249,17 @@ struct AutoloadKnownExtensionsSetting {
 	static Value GetSetting(const ClientContext &context);
 };
 
+struct BlockAllocatorMemorySetting {
+	using RETURN_TYPE = string;
+	static constexpr const char *Name = "block_allocator_memory";
+	static constexpr const char *Description = "Physical memory that the block allocator is allowed to use (this "
+	                                           "memory is never freed and cannot be reduced).";
+	static constexpr const char *InputType = "VARCHAR";
+	static void SetGlobal(DatabaseInstance *db, DBConfig &config, const Value &parameter);
+	static void ResetGlobal(DatabaseInstance *db, DBConfig &config);
+	static Value GetSetting(const ClientContext &context);
+};
+
 struct CatalogErrorMaxSchemasSetting {
 	using RETURN_TYPE = idx_t;
 	static constexpr const char *Name = "catalog_error_max_schemas";
@@ -737,6 +748,17 @@ struct ForceCompressionSetting {
 	using RETURN_TYPE = string;
 	static constexpr const char *Name = "force_compression";
 	static constexpr const char *Description = "DEBUG SETTING: forces a specific compression method to be used";
+	static constexpr const char *InputType = "VARCHAR";
+	static void SetGlobal(DatabaseInstance *db, DBConfig &config, const Value &parameter);
+	static void ResetGlobal(DatabaseInstance *db, DBConfig &config);
+	static Value GetSetting(const ClientContext &context);
+};
+
+struct ForceVariantShredding {
+	using RETURN_TYPE = string;
+	static constexpr const char *Name = "force_variant_shredding";
+	static constexpr const char *Description =
+	    "Forces the VARIANT shredding that happens at checkpoint to use the provided schema for the shredding.";
 	static constexpr const char *InputType = "VARCHAR";
 	static void SetGlobal(DatabaseInstance *db, DBConfig &config, const Value &parameter);
 	static void ResetGlobal(DatabaseInstance *db, DBConfig &config);
@@ -1280,6 +1302,17 @@ struct UsernameSetting {
 	static constexpr const char *Name = "username";
 	static constexpr const char *Description = "The username to use. Ignored for legacy compatibility.";
 	static constexpr const char *InputType = "VARCHAR";
+	static void SetGlobal(DatabaseInstance *db, DBConfig &config, const Value &parameter);
+	static void ResetGlobal(DatabaseInstance *db, DBConfig &config);
+	static Value GetSetting(const ClientContext &context);
+};
+
+struct VariantMinimumShreddingSize {
+	using RETURN_TYPE = int64_t;
+	static constexpr const char *Name = "variant_minimum_shredding_size";
+	static constexpr const char *Description = "Minimum size of a rowgroup to enable VARIANT shredding, or set to -1 "
+	                                           "to disable entirely. Defaults to 1/4th of a rowgroup";
+	static constexpr const char *InputType = "BIGINT";
 	static void SetGlobal(DatabaseInstance *db, DBConfig &config, const Value &parameter);
 	static void ResetGlobal(DatabaseInstance *db, DBConfig &config);
 	static Value GetSetting(const ClientContext &context);

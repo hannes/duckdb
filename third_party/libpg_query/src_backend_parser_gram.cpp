@@ -1181,7 +1181,6 @@
 #include "parser/gramparse.hpp"
 #include "parser/parser.hpp"
 #include "utils/datetime.hpp"
-#include<iostream>
 
 namespace duckdb_libpgquery {
 #define DEFAULT_SCHEMA "main"
@@ -1428,7 +1427,7 @@ typedef union YYSTYPE
 	PGMergeAction mergeaction;
 }
 /* Line 193 of yacc.c.  */
-#line 1432 "third_party/libpg_query/grammar/grammar_out.cpp"
+#line 1431 "third_party/libpg_query/grammar/grammar_out.cpp"
 	YYSTYPE;
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
 # define YYSTYPE_IS_DECLARED 1
@@ -1453,7 +1452,7 @@ typedef struct YYLTYPE
 
 
 /* Line 216 of yacc.c.  */
-#line 1457 "third_party/libpg_query/grammar/grammar_out.cpp"
+#line 1456 "third_party/libpg_query/grammar/grammar_out.cpp"
 
 #ifdef short
 # undef short
@@ -33459,7 +33458,7 @@ yyreduce:
 
 
 /* Line 1267 of yacc.c.  */
-#line 33463 "third_party/libpg_query/grammar/grammar_out.cpp"
+#line 33462 "third_party/libpg_query/grammar/grammar_out.cpp"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
