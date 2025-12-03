@@ -27,6 +27,10 @@ public:
 	SelectStatement() : SQLStatement(StatementType::SELECT_STATEMENT) {
 	}
 
+	SelectStatement(unique_ptr<QueryNode> node_p)
+	    : SQLStatement(StatementType::SELECT_STATEMENT), node(std::move(node_p)) {
+	}
+
 	//! The main query node
 	unique_ptr<QueryNode> node;
 

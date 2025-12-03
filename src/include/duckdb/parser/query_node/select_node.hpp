@@ -25,6 +25,8 @@ public:
 public:
 	DUCKDB_API SelectNode();
 
+	DUCKDB_API SelectNode(unique_ptr<TableRef> from_table_p);
+
 	//! The projection list
 	vector<unique_ptr<ParsedExpression>> select_list;
 	//! The FROM clause

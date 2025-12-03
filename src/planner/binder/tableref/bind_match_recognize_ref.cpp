@@ -137,10 +137,11 @@ BindResult ExpressionBinder::BindPatternExpression(unique_ptr<ParsedExpression> 
 	}
 }
 
-static void CheckAndZapDefineQualifiers(ParsedExpression &root_expr, const string &define_name) {
+static void CheckAndZapQualifiers(ParsedExpression &root_expr, const string &define_name) {
 	ParsedExpressionIterator::VisitExpressionMutable<ColumnRefExpression>(root_expr, [&](ColumnRefExpression &colref) {
 		if (colref.IsQualified() && colref.GetTableName() != define_name) {
-			throw NotImplementedException("Define references cannot refer to other defines just yet");
+			throw NotImplementedException("Define references cannot refer to other defines just yet %s <> %s",
+			                              colref.GetTableName(), define_name.c_str());
 		}
 		colref.column_names = {colref.GetColumnName()};
 	});
@@ -198,8 +199,7 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	// todo: all rows per match, measures, final, ...
 	// final projection that hides intermediate structures
 
-	auto select_node = make_uniq<SelectNode>();
-	select_node->from_table = std::move(ref.input);
+	auto select_node = make_uniq<SelectNode>(std::move(ref.input));
 	select_node->select_list.push_back(make_uniq<StarExpression>());
 
 	// Pattern Matching Window: placeholder window expression
@@ -220,8 +220,7 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	// another select node
 	// all the inputs for the defines go in their own select node
 
-	auto define_select_node = make_uniq<SelectNode>();
-	define_select_node->from_table = std::move(select_node->from_table);
+	auto define_select_node = make_uniq<SelectNode>(std::move(select_node->from_table));
 
 	vector<unique_ptr<WindowExpression>> child_windows;
 	define_select_node->select_list.push_back(make_uniq<StarExpression>());
@@ -238,20 +237,28 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 		D_ASSERT(!define_name.empty());
 		D_ASSERT(define_names.find(define_name) == define_names.end());
 
-		CheckAndZapDefineQualifiers(*expr, define_name);
+		CheckAndZapQualifiers(*expr, define_name);
 		ReplaceFunctions(expr, window_template->Cast<WindowExpression>());
 		pattern_window->children.push_back(make_uniq<ColumnRefExpression>(define_name));
 		define_select_node->select_list.push_back(std::move(expr));
 		define_names.insert(define_name);
 	}
 
-	// for any symbols that *are* in the pattern but are *not* in the defines, we just push a dummy column so this can
-	// bind
+	// push computation of measures into the lowest window.
+	// for (auto &expr : ref.config->measures_expression_list) {
+	// 	D_ASSERT(!expr->alias.empty());
+	// 	CheckAndZapQualifiers(*expr, expr->alias);
+	// 	define_select_node->select_list.push_back(expr->Copy());
+	// 	pattern_window->children.push_back(make_uniq<ColumnRefExpression>(expr->alias));
+	// }
+
+	// for any symbols that *are* in the pattern but are *not* in the defines,
+	// we just push a dummy column so this can bind
 	ParsedExpressionIterator::VisitExpression<ColumnRefExpression>(
 	    *ref.config->pattern, [&](const ColumnRefExpression &colref) {
 		    D_ASSERT(colref.column_names.size() == 1);
 		    auto &symbol_name = colref.column_names[0];
-		    if (define_names.find(symbol_name) == define_names.end()) {
+		    if (define_names.find(symbol_name) == define_names.end()) { // TODO can those even occur multiple times?
 			    // not in define list, implicitly created symbol yay
 			    pattern_window->children.push_back(make_uniq<ColumnRefExpression>(symbol_name));
 			    auto define_expression = make_uniq<ConstantExpression>(Value::BOOLEAN(true));
@@ -267,8 +274,7 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	// we abuse the child list to push the pattern to the binder
 	pattern_window->children.push_back(std::move(ref.config->pattern));
 
-	auto define_select = make_uniq<SelectStatement>();
-	define_select->node = std::move(define_select_node);
+	auto define_select = make_uniq<SelectStatement>(std::move(define_select_node));
 	select_node->from_table = make_uniq<SubqueryRef>(std::move(define_select));
 	pattern_window->alias = "__pattern_window";
 	select_node->select_list.push_back(std::move(pattern_window));
@@ -317,43 +323,29 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 		}
 		}
 
-		auto skip_node = make_uniq<SelectNode>();
-		auto skip_select = make_uniq<SelectStatement>();
-		skip_select->node = std::move(select_node);
-		skip_node->from_table = make_uniq<SubqueryRef>(std::move(skip_select));
+		auto skip_select = make_uniq<SelectStatement>(std::move(select_node));
+		auto skip_node = make_uniq<SelectNode>(make_uniq<SubqueryRef>(std::move(skip_select)));
 		skip_node->select_list.push_back(make_uniq<StarExpression>()); // TODO ??
 		skip_node->qualify = std::move(after_match_window);
 
 		select_node = std::move(skip_node);
 	}
 
-	// TODO we need to stack more stuff on top of this operator
-	// add the measures columns and whatever else we need to our internal match recognize table
-
-	// // Final Projection: collect names and types of all bindings we want to output
-	// vector<string> final_names;
-	// vector<LogicalType> final_types;
-	// child_binder->bind_context.GetTypesAndNames(final_names, final_types);
-	// // TODO: in the end, we do not want the struct here but the measures columns
-	// pattern_window_binder->bind_context.GetTypesAndNames(final_names, final_types);
+	// auto measures_select = make_uniq<SelectStatement>(std::move(select_node));
+	// auto measures_node = make_uniq<SelectNode>(make_uniq<SubqueryRef>(std::move(measures_select)));
 	//
-	// // Final Projection: collect all bindings we want to output
-	// vector<unique_ptr<Expression>> select_expressions;
-	//
-	// for (idx_t i = 0; i < bindings.size(); i++) {
-	// 	// pattern window struct is the second last binding; skip it.
-	// 	if (!is_skip_to_next_row && i == bindings.size() - 1){
-	// 		continue;
-	// 	}
-	// 	auto col = make_uniq<BoundColumnRefExpression>(StringUtil::Format("select%d", i), types[i], bindings[i]);
-	// 	select_expressions.push_back(std::move(col));
+	// // it seems the partitions go first?
+	// for (auto &expr : ref.config->partition_expressions) {
+	// 	measures_node->select_list.push_back(expr->Copy());
 	// }
-	//
-	// // Final Projection: Generate Table
-	// auto final_projection_table_index = GenerateTableIndex();
-	// auto final_projection = make_uniq<LogicalProjection>(final_projection_table_index,
-	// std::move(select_expressions)); final_projection->children.push_back(std::move(last_filter));
-	// bind_context.AddGenericBinding(final_projection_table_index, mr_alias, final_names, final_types);
+	// // now all the measures that we have prepared earlier
+	// for (auto &expr : ref.config->measures_expression_list) {
+	// 	D_ASSERT(!expr->alias.empty());
+	// 	measures_node->select_list.push_back(make_uniq<ColumnRefExpression>(expr->alias));
+	// }
+	// select_node = std::move(measures_node);
+
+	printf("SQL\n%s\n", select_node->ToString().c_str());
 
 	auto child_binder = Binder::CreateBinder(context, this);
 	auto result = child_binder->Bind(*select_node);

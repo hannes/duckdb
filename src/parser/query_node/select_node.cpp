@@ -8,6 +8,10 @@ SelectNode::SelectNode()
     : QueryNode(QueryNodeType::SELECT_NODE), aggregate_handling(AggregateHandling::STANDARD_HANDLING) {
 }
 
+SelectNode::SelectNode(unique_ptr<TableRef> from_table_p)
+    : QueryNode(QueryNodeType::SELECT_NODE), from_table(std::move(from_table_p)),
+      aggregate_handling(AggregateHandling::STANDARD_HANDLING) {};
+
 string SelectNode::ToString() const {
 	if (from_table && from_table->type == TableReferenceType::SHOW_REF) {
 		D_ASSERT(select_list.size() == 1);
