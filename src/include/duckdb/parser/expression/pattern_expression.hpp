@@ -14,13 +14,16 @@ namespace duckdb {
 
 // TODO move stuff to implementation file
 
-class ConcatenationExpression : public ParsedExpression {
+class PatternExpression : public ParsedExpression {
 public:
 	static constexpr const ExpressionClass TYPE = ExpressionClass::PATTERN;
+	PatternExpression(ExpressionType type) : ParsedExpression(type, ExpressionClass::PATTERN) {};
+};
 
+class ConcatenationExpression : public PatternExpression {
 public:
 	ConcatenationExpression(vector<unique_ptr<ParsedExpression>> children_p)
-	    : ParsedExpression(ExpressionType::CONCATENATION, ExpressionClass::PATTERN), children(std::move(children_p)) {
+	    : PatternExpression(ExpressionType::CONCATENATION), children(std::move(children_p)) {
 	}
 
 	string ToString() const {
@@ -41,14 +44,11 @@ public:
 	vector<unique_ptr<ParsedExpression>> children;
 };
 
-class QuantifiedExpression : public ParsedExpression {
-public:
-	static constexpr const ExpressionClass TYPE = ExpressionClass::PATTERN;
-
+class QuantifiedExpression : public PatternExpression {
 public:
 	QuantifiedExpression(unique_ptr<ParsedExpression> child_p, optional_idx min_count_p, optional_idx max_count_p)
-	    : ParsedExpression(ExpressionType::QUANTIFIER, ExpressionClass::PATTERN), child(std::move(child_p)),
-	      min_count(min_count_p), max_count(max_count_p) {
+	    : PatternExpression(ExpressionType::QUANTIFIER), child(std::move(child_p)), min_count(min_count_p),
+	      max_count(max_count_p) {
 		if (min_count.IsValid() && max_count.IsValid() && min_count.GetIndex() > max_count.GetIndex()) {
 			throw ParserException("Min count cannot be larger than max count");
 		}
@@ -81,13 +81,10 @@ public:
 	optional_idx max_count;
 };
 
-class AlternationExpression : public ParsedExpression {
-public:
-	static constexpr const ExpressionClass TYPE = ExpressionClass::PATTERN;
-
+class AlternationExpression : public PatternExpression {
 public:
 	AlternationExpression(unique_ptr<ParsedExpression> child_left_p, unique_ptr<ParsedExpression> child_right_p)
-	    : ParsedExpression(ExpressionType::ALTERNATION, ExpressionClass::PATTERN), child_left(std::move(child_left_p)),
+	    : PatternExpression(ExpressionType::ALTERNATION), child_left(std::move(child_left_p)),
 	      child_right(std::move(child_right_p)) {
 	}
 

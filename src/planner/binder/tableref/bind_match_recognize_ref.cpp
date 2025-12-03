@@ -230,12 +230,39 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	D_ASSERT(pattern_window->children.empty()); // for now
 	auto window_template = pattern_window->Copy();
 
+	case_insensitive_set_t define_names;
+
 	for (auto &expr : ref.config->defines_expression_list) {
-		CheckAndZapDefineQualifiers(*expr, expr->GetAlias());
+		auto &define_name = expr->alias;
+		// TODO can this happen?
+		D_ASSERT(!define_name.empty());
+		D_ASSERT(define_names.find(define_name) == define_names.end());
+
+		CheckAndZapDefineQualifiers(*expr, define_name);
 		ReplaceFunctions(expr, window_template->Cast<WindowExpression>());
-		pattern_window->children.push_back(make_uniq<ColumnRefExpression>(expr->alias));
+		pattern_window->children.push_back(make_uniq<ColumnRefExpression>(define_name));
 		define_select_node->select_list.push_back(std::move(expr));
+		define_names.insert(define_name);
 	}
+
+	// for any symbols that *are* in the pattern but are *not* in the defines, we just push a dummy column so this can
+	// bind
+	ParsedExpressionIterator::VisitExpression<ColumnRefExpression>(
+	    *ref.config->pattern, [&](const ColumnRefExpression &colref) {
+		    D_ASSERT(colref.column_names.size() == 1);
+		    auto &symbol_name = colref.column_names[0];
+		    if (define_names.find(symbol_name) == define_names.end()) {
+			    // not in define list, implicitly created symbol yay
+			    pattern_window->children.push_back(make_uniq<ColumnRefExpression>(symbol_name));
+			    auto define_expression = make_uniq<ConstantExpression>(Value::BOOLEAN(true));
+			    define_expression->alias = symbol_name;
+			    define_select_node->select_list.push_back(std::move(define_expression));
+			    define_names.insert(symbol_name);
+		    }
+	    });
+
+	// TODO deal with measures, what on earth is in the output??
+	// TODO likely measures have to be pushed into the way-down window, too
 
 	// we abuse the child list to push the pattern to the binder
 	pattern_window->children.push_back(std::move(ref.config->pattern));

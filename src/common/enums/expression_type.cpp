@@ -206,6 +206,8 @@ string ExpressionClassToString(ExpressionClass type) {
 		return "POSITIONAL_REFERENCE";
 	case ExpressionClass::BETWEEN:
 		return "BETWEEN";
+	case ExpressionClass::PATTERN:
+		return "PATTERN";
 	case ExpressionClass::BOUND_AGGREGATE:
 		return "BOUND_AGGREGATE";
 	case ExpressionClass::BOUND_CASE:
@@ -245,7 +247,7 @@ string ExpressionClassToString(ExpressionClass type) {
 	case ExpressionClass::BOUND_EXPANDED:
 		return "BOUND_EXPANDED";
 	default:
-		return "ExpressionClass::!!UNIMPLEMENTED_CASE!!";
+		return "INVALID";
 	}
 }
 

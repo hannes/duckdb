@@ -71,7 +71,6 @@ void ParsedExpressionIterator::EnumerateChildren(
 		}
 		break;
 	}
-
 	case ExpressionClass::FUNCTION: {
 		auto &func_expr = expr.Cast<FunctionExpression>();
 		for (auto &child : func_expr.children) {
@@ -161,31 +160,25 @@ void ParsedExpressionIterator::EnumerateChildren(
 		// these node types have no children
 		break;
 	case ExpressionClass::PATTERN:
-		// 	switch (expr.type) {
-		// 	case ExpressionType::CONCATENATION: {
-		// 		auto &concat_expr = expr.Cast<ConcatenationExpression>();
-		// 		for (auto &child : concat_expr.children) {
-		// 			callback(child);
-		// 		}
-		//
-		// 		break;
-		// 	}
-		// 	case ExpressionType::ALTERNATION:{
-		// 		auto &alt_expr = expr.Cast<AlternationExpression>();
-		// 		callback(alt_expr.child_left);
-		// 		callback(alt_expr.child_right);
-		//
-		// 			break;
-		// 	}
-		// 	case ExpressionType::QUANTIFIER:{
-		// 		auto &quant_expr = expr.Cast<QuantifiedExpression>();
-		// 		callback(quant_expr.child);
-		// 		break;
-		// }
-		// 	default:
-		// 		throw NotImplementedException("Unimplemented expression type %s", ExpressionTypeToString(expr.type));
-		// 	}
-		// these children need special handling
+		switch (expr.type) {
+		case ExpressionType::ALTERNATION: {
+			auto &alt_expr = expr.Cast<AlternationExpression>();
+			callback(alt_expr.child_left);
+			callback(alt_expr.child_right);
+			break;
+		}
+		case ExpressionType::CONCATENATION:
+			for (auto &child : expr.Cast<ConcatenationExpression>().children) {
+				callback(child);
+			}
+			break;
+		case ExpressionType::QUANTIFIER:
+			callback(expr.Cast<QuantifiedExpression>().child);
+			break;
+
+		default:
+			throw NotImplementedException("Unimplemented expression type %s", ExpressionTypeToString(expr.type));
+		}
 		break;
 	default:
 		// called on non ParsedExpression type!
