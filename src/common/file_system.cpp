@@ -228,7 +228,7 @@ bool FileSystem::IsPathAbsolute(const string &path) {
 
 string FileSystem::NormalizeAbsolutePath(const string &path) {
 	D_ASSERT(IsPathAbsolute(path));
-	auto result = StringUtil::Lower(FileSystem::ConvertSeparators(path));
+	auto result = FileSystem::ConvertSeparators(path);
 	if (StartsWithSingleBackslash(result)) {
 		// Path starts with a single backslash or forward slash
 		// prepend drive letter
@@ -618,6 +618,10 @@ void FileSystem::SetDisabledFileSystems(const vector<string> &names) {
 }
 
 bool FileSystem::SubSystemIsDisabled(const string &name) {
+	throw NotImplementedException("%s: Non-virtual file system does not have subsystems", GetName());
+}
+
+bool FileSystem::IsDisabledForPath(const string &path) {
 	throw NotImplementedException("%s: Non-virtual file system does not have subsystems", GetName());
 }
 

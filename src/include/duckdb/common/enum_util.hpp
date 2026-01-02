@@ -82,6 +82,8 @@ enum class AsyncResultType : uint8_t;
 
 enum class AsyncResultsExecutionMode : uint8_t;
 
+enum class BaseColumnPrunerMode : uint8_t;
+
 enum class BinderType : uint8_t;
 
 enum class BindingMode : uint8_t;
@@ -100,6 +102,8 @@ enum class CSVState : uint8_t;
 
 enum class CTEMaterialize : uint8_t;
 
+enum class CacheValidationMode : uint8_t;
+
 enum class CachingMode : uint8_t;
 
 enum class CatalogLookupBehavior : uint8_t;
@@ -114,6 +118,8 @@ enum class ColumnDataAllocatorType : uint8_t;
 
 enum class ColumnDataScanProperties : uint8_t;
 
+enum class ColumnIndexType : uint8_t;
+
 enum class ColumnSegmentType : uint8_t;
 
 enum class CompressedMaterializationDirection : uint8_t;
@@ -125,6 +131,8 @@ enum class CompressionValidity : uint8_t;
 enum class ConflictManagerMode : uint8_t;
 
 enum class ConstraintType : uint8_t;
+
+enum class CoordinateReferenceSystemType : uint8_t;
 
 enum class CopyFunctionReturnType : uint8_t;
 
@@ -334,6 +342,10 @@ enum class ProfilerPrintFormat : uint8_t;
 
 enum class ProfilingCoverage : uint8_t;
 
+enum class ProfilingParameterNames : uint8_t;
+
+enum class PushdownExtractSupport : uint8_t;
+
 enum class QuantileSerializationType : uint8_t;
 
 enum class QueryNodeType : uint8_t;
@@ -405,6 +417,8 @@ enum class StatisticsType : uint8_t;
 enum class StatsInfo : uint8_t;
 
 enum class StorageBlockPrefetch : uint8_t;
+
+enum class StorageIndexType : uint8_t;
 
 enum class StrTimeSpecifier : uint8_t;
 
@@ -555,6 +569,9 @@ template<>
 const char* EnumUtil::ToChars<AsyncResultsExecutionMode>(AsyncResultsExecutionMode value);
 
 template<>
+const char* EnumUtil::ToChars<BaseColumnPrunerMode>(BaseColumnPrunerMode value);
+
+template<>
 const char* EnumUtil::ToChars<BinderType>(BinderType value);
 
 template<>
@@ -582,6 +599,9 @@ template<>
 const char* EnumUtil::ToChars<CTEMaterialize>(CTEMaterialize value);
 
 template<>
+const char* EnumUtil::ToChars<CacheValidationMode>(CacheValidationMode value);
+
+template<>
 const char* EnumUtil::ToChars<CachingMode>(CachingMode value);
 
 template<>
@@ -603,6 +623,9 @@ template<>
 const char* EnumUtil::ToChars<ColumnDataScanProperties>(ColumnDataScanProperties value);
 
 template<>
+const char* EnumUtil::ToChars<ColumnIndexType>(ColumnIndexType value);
+
+template<>
 const char* EnumUtil::ToChars<ColumnSegmentType>(ColumnSegmentType value);
 
 template<>
@@ -619,6 +642,9 @@ const char* EnumUtil::ToChars<ConflictManagerMode>(ConflictManagerMode value);
 
 template<>
 const char* EnumUtil::ToChars<ConstraintType>(ConstraintType value);
+
+template<>
+const char* EnumUtil::ToChars<CoordinateReferenceSystemType>(CoordinateReferenceSystemType value);
 
 template<>
 const char* EnumUtil::ToChars<CopyFunctionReturnType>(CopyFunctionReturnType value);
@@ -933,6 +959,12 @@ template<>
 const char* EnumUtil::ToChars<ProfilingCoverage>(ProfilingCoverage value);
 
 template<>
+const char* EnumUtil::ToChars<ProfilingParameterNames>(ProfilingParameterNames value);
+
+template<>
+const char* EnumUtil::ToChars<PushdownExtractSupport>(PushdownExtractSupport value);
+
+template<>
 const char* EnumUtil::ToChars<QuantileSerializationType>(QuantileSerializationType value);
 
 template<>
@@ -1039,6 +1071,9 @@ const char* EnumUtil::ToChars<StatsInfo>(StatsInfo value);
 
 template<>
 const char* EnumUtil::ToChars<StorageBlockPrefetch>(StorageBlockPrefetch value);
+
+template<>
+const char* EnumUtil::ToChars<StorageIndexType>(StorageIndexType value);
 
 template<>
 const char* EnumUtil::ToChars<StrTimeSpecifier>(StrTimeSpecifier value);
@@ -1225,6 +1260,9 @@ template<>
 AsyncResultsExecutionMode EnumUtil::FromString<AsyncResultsExecutionMode>(const char *value);
 
 template<>
+BaseColumnPrunerMode EnumUtil::FromString<BaseColumnPrunerMode>(const char *value);
+
+template<>
 BinderType EnumUtil::FromString<BinderType>(const char *value);
 
 template<>
@@ -1252,6 +1290,9 @@ template<>
 CTEMaterialize EnumUtil::FromString<CTEMaterialize>(const char *value);
 
 template<>
+CacheValidationMode EnumUtil::FromString<CacheValidationMode>(const char *value);
+
+template<>
 CachingMode EnumUtil::FromString<CachingMode>(const char *value);
 
 template<>
@@ -1273,6 +1314,9 @@ template<>
 ColumnDataScanProperties EnumUtil::FromString<ColumnDataScanProperties>(const char *value);
 
 template<>
+ColumnIndexType EnumUtil::FromString<ColumnIndexType>(const char *value);
+
+template<>
 ColumnSegmentType EnumUtil::FromString<ColumnSegmentType>(const char *value);
 
 template<>
@@ -1289,6 +1333,9 @@ ConflictManagerMode EnumUtil::FromString<ConflictManagerMode>(const char *value)
 
 template<>
 ConstraintType EnumUtil::FromString<ConstraintType>(const char *value);
+
+template<>
+CoordinateReferenceSystemType EnumUtil::FromString<CoordinateReferenceSystemType>(const char *value);
 
 template<>
 CopyFunctionReturnType EnumUtil::FromString<CopyFunctionReturnType>(const char *value);
@@ -1603,6 +1650,12 @@ template<>
 ProfilingCoverage EnumUtil::FromString<ProfilingCoverage>(const char *value);
 
 template<>
+ProfilingParameterNames EnumUtil::FromString<ProfilingParameterNames>(const char *value);
+
+template<>
+PushdownExtractSupport EnumUtil::FromString<PushdownExtractSupport>(const char *value);
+
+template<>
 QuantileSerializationType EnumUtil::FromString<QuantileSerializationType>(const char *value);
 
 template<>
@@ -1709,6 +1762,9 @@ StatsInfo EnumUtil::FromString<StatsInfo>(const char *value);
 
 template<>
 StorageBlockPrefetch EnumUtil::FromString<StorageBlockPrefetch>(const char *value);
+
+template<>
+StorageIndexType EnumUtil::FromString<StorageIndexType>(const char *value);
 
 template<>
 StrTimeSpecifier EnumUtil::FromString<StrTimeSpecifier>(const char *value);
