@@ -48,7 +48,7 @@ WindowMatchRecognizeExecutor::WindowMatchRecognizeExecutor(BoundWindowExpression
 	unordered_map<column_t, column_t> replacement_map;
 	for (idx_t expr_idx = 0; expr_idx < wexpr.children.size(); expr_idx++) {
 		const auto &child = wexpr.children[expr_idx];
-		D_ASSERT(child->GetExpressionType() == ExpressionType::BOUND_REF);
+		// D_ASSERT(child->GetExpressionType() == ExpressionType::BOUND_REF);
 		auto new_index = shared.RegisterCollection(child, /* this seems to not matter for the partition_mask */ false);
 		replacement_map[expr_idx] = new_index;
 	}
@@ -70,15 +70,13 @@ inline bool RowIsVisible(ColumnDataScanState &scan, idx_t row_idx) {
 	return (row_idx < scan.next_row_index && scan.current_row_index <= row_idx);
 }
 
-static void FetchPartitionAndExecute(ClientContext &context, ColumnDataCollection &input, ExpressionExecutor &executor,
-                                     DataChunk &result_chunk, idx_t partition_start, idx_t partition_end) {
+static void FetchPartitionAndExecute(ClientContext &context, ColumnDataCollection &input, DataChunk &result_chunk,
+                                     idx_t partition_start, idx_t partition_end) {
 	ColumnDataScanState scan_state;
 	DataChunk scan_chunk;
-	DataChunk execute_result_chunk;
 
 	// TODO cache those allocations
 	input.InitializeScanChunk(scan_chunk);
-	execute_result_chunk.Initialize(context, result_chunk.GetTypes());
 
 	auto partition_size = partition_end - partition_start + 1;
 
@@ -93,8 +91,7 @@ static void FetchPartitionAndExecute(ClientContext &context, ColumnDataCollectio
 	auto chunk_offset = partition_start - scan_state.current_row_index;
 	scan_chunk.Slice(chunk_offset, scan_chunk.size() - chunk_offset);
 
-	executor.Execute(scan_chunk, execute_result_chunk);
-	result_chunk.Append(execute_result_chunk, false);
+	result_chunk.Append(scan_chunk, false);
 
 	while (partition_end <= scan_state.next_row_index) {
 		if (!input.Scan(scan_state, scan_chunk)) {
@@ -105,9 +102,7 @@ static void FetchPartitionAndExecute(ClientContext &context, ColumnDataCollectio
 		if (scan_state.next_row_index > partition_end) {
 			scan_chunk.Slice(0, scan_state.next_row_index - partition_end); // TODO verify this very complex math
 		}
-
-		executor.Execute(scan_chunk, execute_result_chunk);
-		result_chunk.Append(execute_result_chunk, false);
+		result_chunk.Append(scan_chunk, false);
 	}
 	D_ASSERT(result_chunk.size() == partition_size);
 }
@@ -132,9 +127,12 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 		// the partition end offset depends on whether we found a next partition or if we are at the end
 		auto partition_end =
 		    payload_idx + 1 == gstate.partition_mask.RowIsValid(payload_idx) ? payload_idx - 1 : payload_idx;
-		// FetchPartitionAndExecute(context.client, *collection->inputs, define_executor, define_result_chunk,
-		//                          partition_start, partition_end);
 
+		// TODO we should not reallocate this all the time but whatever
+		DataChunk partition_chunk;
+		partition_chunk.Initialize(context.client, collection->inputs->Types(), partition_end - partition_start + 1);
+		FetchPartitionAndExecute(context.client, *collection->inputs, partition_chunk, partition_start, partition_end);
+		partition_chunk.Print();
 		config.pattern->Print();
 		// define_result_chunk.Print();
 
