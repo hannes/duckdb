@@ -120,7 +120,7 @@ struct Match {
 // simplistic backtracking-based pattern executor
 // FIXME pretty naive this, and an allocation-fest.
 static vector<Match> MatchPattern(const Expression &pattern, const DataChunk &input, const idx_t offset,
-                                  unordered_map<string, idx_t> define_child_mapping) {
+                                  unordered_map<string, idx_t> &define_child_mapping) {
 	switch (pattern.type) {
 	case ExpressionType::CONCATENATION: {
 		const auto &concatenation_expr = (BoundConcatenationExpression &)pattern;
@@ -188,7 +188,7 @@ static vector<Match> MatchPattern(const Expression &pattern, const DataChunk &in
 		D_ASSERT(define_child_mapping.find(pattern.alias) != define_child_mapping.end());
 		auto &child_vector = StructVector::GetEntries(input.data[0])[define_child_mapping[pattern.alias]];
 		D_ASSERT(child_vector->GetVectorType() == VectorType::FLAT_VECTOR);
-		return {Match(FlatVector::GetData<uint8_t>(*child_vector)[offset])};
+		return {Match(FlatVector::GetData<uint8_t>(*child_vector)[offset], offset)};
 	}
 	default:
 		throw InternalException("Unsupported pattern type");
@@ -211,7 +211,7 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 	// figure out which define has which child offset
 	unordered_map<string, idx_t> define_child_mapping;
 	auto &defines_struct_child = collection->inputs->Types()[0];
-	for (idx_t struct_child_idx = 0; struct_child_idx > StructType::GetChildCount(defines_struct_child);
+	for (idx_t struct_child_idx = 0; struct_child_idx < StructType::GetChildCount(defines_struct_child);
 	     struct_child_idx++) {
 		define_child_mapping[StructType::GetChildName(defines_struct_child, struct_child_idx)] = struct_child_idx;
 	}
