@@ -2,6 +2,7 @@
 
 #include "duckdb/function/match_recognize.hpp"
 #include "duckdb/planner/expression_iterator.hpp"
+#include "duckdb/parser/expression/pattern_expression.hpp"
 
 namespace duckdb {
 
@@ -70,8 +71,8 @@ inline bool RowIsVisible(ColumnDataScanState &scan, idx_t row_idx) {
 	return (row_idx < scan.next_row_index && scan.current_row_index <= row_idx);
 }
 
-static void FetchPartitionAndExecute(ClientContext &context, ColumnDataCollection &input, DataChunk &result_chunk,
-                                     idx_t partition_start, idx_t partition_end) {
+static void FetchPartition(ClientContext &context, ColumnDataCollection &input, DataChunk &result_chunk,
+                           idx_t partition_start, idx_t partition_end) {
 	ColumnDataScanState scan_state;
 	DataChunk scan_chunk;
 
@@ -107,6 +108,93 @@ static void FetchPartitionAndExecute(ClientContext &context, ColumnDataCollectio
 	D_ASSERT(result_chunk.size() == partition_size);
 }
 
+struct Match {
+	Match(bool success_p, optional_idx end_idx_p = optional_idx::Invalid(), bool optional_p = false)
+	    : success(success_p), end_idx(end_idx_p), optional(optional_p) {
+	}
+	optional_idx end_idx;
+	bool success;
+	bool optional;
+};
+
+// simplistic backtracking-based pattern executor
+// FIXME pretty naive this, and an allocation-fest.
+static vector<Match> MatchPattern(const Expression &pattern, const DataChunk &input, const idx_t offset,
+                                  unordered_map<string, idx_t> define_child_mapping) {
+	switch (pattern.type) {
+	case ExpressionType::CONCATENATION: {
+		const auto &concatenation_expr = (BoundConcatenationExpression &)pattern;
+
+		auto child_start_idx = offset;
+		idx_t token_idx = 0;
+		vector<Match> matches;
+
+		while (token_idx < concatenation_expr.children.size()) {
+			auto &child_pattern = *concatenation_expr.children[token_idx];
+			auto res = MatchPattern(child_pattern, input, child_start_idx, define_child_mapping);
+			if (res.back().success) {
+				matches.insert(matches.end(), res.begin(), res.end());
+				child_start_idx = res.back().end_idx.GetIndex();
+				token_idx++;
+			} else {
+				auto token_is_optional = false;
+				if (pattern.type == ExpressionType::QUANTIFIER) {
+					const auto &quantifier_expr = (BoundQuantifierExpression &)child_pattern;
+					if (quantifier_expr.min_count.IsValid() && quantifier_expr.min_count.GetIndex() > 0) {
+						token_is_optional = true;
+					}
+				}
+				if (token_is_optional) {
+					token_idx++;
+					continue;
+				}
+				if (!matches.empty() && matches.back().optional) {
+					child_start_idx = matches.back().end_idx.GetIndex();
+					matches.pop_back();
+					continue;
+				}
+				break;
+			}
+		}
+		return {Match(token_idx == concatenation_expr.children.size(), offset, child_start_idx)};
+	}
+	case ExpressionType::QUANTIFIER: {
+		const auto &quantifier_expr = (BoundQuantifierExpression &)pattern;
+		idx_t match_count = 0;
+		auto child_start_idx = offset;
+		auto max_offset = quantifier_expr.max_count.IsValid()
+		                      ? MinValue(input.size(), quantifier_expr.max_count.GetIndex())
+		                      : input.size();
+		vector<Match> matches;
+		while (match_count < max_offset) {
+			auto res = MatchPattern(*quantifier_expr.child, input, child_start_idx, define_child_mapping);
+			if (!res.back().success) {
+				break;
+			}
+			child_start_idx = res.back().end_idx.GetIndex();
+			match_count++;
+			auto is_optional =
+			    quantifier_expr.min_count.IsValid() ? match_count >= quantifier_expr.min_count.GetIndex() : true;
+			matches.emplace_back(Match(true, child_start_idx, is_optional));
+		}
+		if (!matches.empty() &&
+		    (!quantifier_expr.min_count.IsValid() || match_count >= quantifier_expr.min_count.GetIndex())) {
+			return matches;
+		}
+		return {Match(false)};
+	}
+	case ExpressionType::BOUND_COLUMN_REF: {
+		// TODO cache those pointers in the map instead of the vector
+		D_ASSERT(define_child_mapping.find(pattern.alias) != define_child_mapping.end());
+		auto &child_vector = StructVector::GetEntries(input.data[0])[define_child_mapping[pattern.alias]];
+		D_ASSERT(child_vector->GetVectorType() == VectorType::FLAT_VECTOR);
+		return {Match(FlatVector::GetData<uint8_t>(*child_vector)[offset])};
+	}
+	default:
+		throw InternalException("Unsupported pattern type");
+	}
+}
+
 // this gets called per partition
 void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, CollectionPtr collection,
                                             OperatorSinkInput &sink) const {
@@ -119,11 +207,19 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 	// we always start with a new partition
 	D_ASSERT(gstate.partition_mask.RowIsValid(0));
 
+	// TODO this can be cached higher up
+	// figure out which define has which child offset
+	unordered_map<string, idx_t> define_child_mapping;
+	auto &defines_struct_child = collection->inputs->Types()[0];
+	for (idx_t struct_child_idx = 0; struct_child_idx > StructType::GetChildCount(defines_struct_child);
+	     struct_child_idx++) {
+		define_child_mapping[StructType::GetChildName(defines_struct_child, struct_child_idx)] = struct_child_idx;
+	}
+
 	for (idx_t payload_idx = 1; payload_idx < gstate.payload_count; payload_idx++) {
 		if (!gstate.partition_mask.RowIsValid(payload_idx) && payload_idx + 1 < gstate.payload_count) {
 			continue;
 		}
-
 		// the partition end offset depends on whether we found a next partition or if we are at the end
 		auto partition_end =
 		    payload_idx + 1 == gstate.partition_mask.RowIsValid(payload_idx) ? payload_idx - 1 : payload_idx;
@@ -131,29 +227,25 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 		// TODO we should not reallocate this all the time but whatever
 		DataChunk partition_chunk;
 		partition_chunk.Initialize(context.client, collection->inputs->Types(), partition_end - partition_start + 1);
-		FetchPartitionAndExecute(context.client, *collection->inputs, partition_chunk, partition_start, partition_end);
+		// FIXME
+		FetchPartition(context.client, *collection->inputs, partition_chunk, partition_start, partition_end);
+
+		// FIXME
 		partition_chunk.Print();
 		config.pattern->Print();
-		// define_result_chunk.Print();
 
-		// TODO state machine stuff
-
-		// printf("moo [%llu, %llu]\n", partition_start, partition_end);
-
-		// set some dummy values to check result projection
 		for (idx_t partition_idx = partition_start; partition_idx <= partition_end; partition_idx++) {
+			auto match = MatchPattern(*config.pattern, partition_chunk, partition_idx, define_child_mapping).back();
+
 			FlatVector::Validity(gstate.result_vec).SetValid(partition_idx);
 			auto &struct_entries = StructVector::GetEntries(gstate.result_vec);
 			// first entry is list of classifiers, TODO
-			struct_entries[1]->SetValue(partition_idx, Value::BOOLEAN(true));
-			struct_entries[2]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(partition_idx)));
-			struct_entries[3]->SetValue(partition_idx,
-			                            Value::INTEGER(NumericCast<int32_t>(partition_idx < 4 ? 3 : partition_end)));
-			struct_entries[4]->SetValue(partition_idx,
-			                            Value::INTEGER(NumericCast<int32_t>(partition_idx < 2   ? 2
-			                                                                : partition_idx < 4 ? 3
-			                                                                : partition_idx < 6 ? 5
-			                                                                                    : partition_end)));
+			struct_entries[1]->SetValue(partition_idx, Value::BOOLEAN(match.end_idx == partition_end));
+			struct_entries[2]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(partition_start)));
+			struct_entries[3]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(match.end_idx.GetIndex())));
+			struct_entries[4]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(match.end_idx.GetIndex())));
+
+			gstate.result_vec.Print(partition_idx);
 		}
 
 		partition_start = payload_idx;

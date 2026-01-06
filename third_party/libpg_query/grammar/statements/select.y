@@ -843,7 +843,13 @@ row_pattern_quantifier :
    | '{'Iconst '}'          { $$ = list_make2(makeInteger($2), makeInteger($2))};
 
 row_pattern_primary :
-   ColLabelOrString      { $$ = makeMatchRecognizePattern(PGMatchRecognizePatternLabel, (PGNode*)makeString($1), NULL, @1)}
+   ColLabelOrString      {
+       auto node = makeMatchRecognizePattern(PGMatchRecognizePatternLabel, (PGNode*)makeString($1), NULL, @1);
+           auto pattern = (PGMatchRecognizePattern*) node;
+           pattern->min_count = 1;
+           pattern->max_count = 1;
+       $$ = (PGNode*)node;
+   }
    | '$'                 { $$ = makeMatchRecognizePattern(PGMatchRecognizePatternAnchorBack, NULL, NULL, @1)}
    | '^'                 { $$ = makeMatchRecognizePattern(PGMatchRecognizePatternAnchorFront, NULL, NULL, @1)}
    | '(' row_pattern ')' { $$ = makeMatchRecognizePattern(PGMatchRecognizePatternGrouping, (PGNode*)$2, NULL, @1)};
