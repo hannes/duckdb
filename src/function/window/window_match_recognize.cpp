@@ -121,7 +121,7 @@ struct Match {
 // simplistic backtracking-based pattern executor
 // FIXME pretty naive this, and an allocation-fest.
 static vector<Match> MatchPattern(const Expression &pattern, const DataChunk &input, const idx_t offset,
-                                  unordered_map<string, idx_t> &define_child_mapping) {
+                                  unordered_map<string, uint8_t *> &define_child_mapping) {
 	if (offset >= input.size()) {
 		return {Match(false)};
 	}
@@ -190,10 +190,9 @@ static vector<Match> MatchPattern(const Expression &pattern, const DataChunk &in
 	case ExpressionType::BOUND_COLUMN_REF: {
 		// TODO cache those pointers in the map instead of the vector
 		D_ASSERT(define_child_mapping.find(pattern.alias) != define_child_mapping.end());
-		auto &child_vector = StructVector::GetEntries(input.data[0])[define_child_mapping[pattern.alias]];
-		D_ASSERT(child_vector->GetVectorType() == VectorType::FLAT_VECTOR);
-		//printf("%llu %s %d\n", offset, pattern.alias.c_str(), FlatVector::GetData<uint8_t>(*child_vector)[offset]);
-		return {Match(FlatVector::GetData<uint8_t>(*child_vector)[offset], offset + 1)};
+
+		// printf("%llu %s %d\n", offset, pattern.alias.c_str(), FlatVector::GetData<uint8_t>(*child_vector)[offset]);
+		return {Match(define_child_mapping[pattern.alias][offset], offset + 1)};
 	}
 	default:
 		throw InternalException("Unsupported pattern type");
@@ -212,15 +211,22 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 	// we always start with a new partition
 	D_ASSERT(gstate.partition_mask.RowIsValid(0));
 
-	// TODO this can be cached higher up
-	// figure out which define has which child offset
-	unordered_map<string, idx_t> define_child_mapping;
-	auto &defines_struct_child = collection->inputs->Types()[0];
+	// TODO this should probably be kept elsewhere
+	DataChunk partition_chunk;
+	partition_chunk.Initialize(context.client, collection->inputs->Types(), gstate.payload_count);
+	// we keep a map with symbol names to pointers
+	// TODO we could also put them into the boundref expression?
+	unordered_map<string, uint8_t *> define_child_mapping;
+	auto defines_struct_child = partition_chunk.GetTypes()[0];
 	for (idx_t struct_child_idx = 0; struct_child_idx < StructType::GetChildCount(defines_struct_child);
 	     struct_child_idx++) {
-		define_child_mapping[StructType::GetChildName(defines_struct_child, struct_child_idx)] = struct_child_idx;
+		auto &child_vector = StructVector::GetEntries(partition_chunk.data[0])[struct_child_idx];
+		D_ASSERT(child_vector->GetVectorType() == VectorType::FLAT_VECTOR);
+		define_child_mapping[StructType::GetChildName(defines_struct_child, struct_child_idx)] =
+		    FlatVector::GetData<uint8_t>(*child_vector);
 	}
 
+	// iterate over entire input, but there can be many partitions in the input
 	for (idx_t payload_idx = 1; payload_idx < gstate.payload_count; payload_idx++) {
 		if (!gstate.partition_mask.RowIsValid(payload_idx) && payload_idx + 1 < gstate.payload_count) {
 			continue;
@@ -229,11 +235,11 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 		auto partition_end =
 		    payload_idx + 1 == gstate.partition_mask.RowIsValid(payload_idx) ? payload_idx - 1 : payload_idx;
 
-		// TODO we should not reallocate this all the time but whatever for now
-		DataChunk partition_chunk;
-		partition_chunk.Initialize(context.client, collection->inputs->Types(), partition_end - partition_start + 1);
 		// FIXME
 		FetchPartition(context.client, *collection->inputs, partition_chunk, partition_start, partition_end);
+
+		// TODO this can be cached higher up
+		// figure out which define has which child offset
 
 		for (idx_t partition_idx = partition_start; partition_idx < partition_end; partition_idx++) {
 			auto match = MatchPattern(*config.pattern, partition_chunk, partition_idx, define_child_mapping).back();
@@ -243,8 +249,10 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 			// first entry is list of classifiers, TODO
 			struct_entries[1]->SetValue(partition_idx, Value::BOOLEAN(match.success));
 			struct_entries[2]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(partition_idx)));
-			struct_entries[3]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(match.end_idx.GetIndex())-1));
-			struct_entries[4]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(match.end_idx.GetIndex())-1));
+			struct_entries[3]->SetValue(partition_idx,
+			                            Value::INTEGER(NumericCast<int32_t>(match.end_idx.GetIndex()) - 1));
+			struct_entries[4]->SetValue(partition_idx,
+			                            Value::INTEGER(NumericCast<int32_t>(match.end_idx.GetIndex()) - 1));
 		}
 		// gstate.result_vec.Print(partition_end);
 
