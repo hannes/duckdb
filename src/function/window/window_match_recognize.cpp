@@ -243,8 +243,8 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 			// first entry is list of classifiers, TODO
 			struct_entries[1]->SetValue(partition_idx, Value::BOOLEAN(match.success));
 			struct_entries[2]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(partition_idx)));
-			struct_entries[3]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(match.end_idx.GetIndex())));
-			struct_entries[4]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(match.end_idx.GetIndex())));
+			struct_entries[3]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(match.end_idx.GetIndex())-1));
+			struct_entries[4]->SetValue(partition_idx, Value::INTEGER(NumericCast<int32_t>(match.end_idx.GetIndex())-1));
 		}
 		// gstate.result_vec.Print(partition_end);
 
