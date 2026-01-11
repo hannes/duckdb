@@ -190,8 +190,6 @@ static vector<Match> MatchPattern(const Expression &pattern, const DataChunk &in
 	case ExpressionType::BOUND_COLUMN_REF: {
 		// TODO cache those pointers in the map instead of the vector
 		D_ASSERT(define_child_mapping.find(pattern.alias) != define_child_mapping.end());
-
-		// printf("%llu %s %d\n", offset, pattern.alias.c_str(), FlatVector::GetData<uint8_t>(*child_vector)[offset]);
 		return {Match(define_child_mapping[pattern.alias][offset], offset + 1)};
 	}
 	default:
@@ -215,7 +213,9 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 	DataChunk partition_chunk;
 	partition_chunk.Initialize(context.client, collection->inputs->Types(), gstate.payload_count);
 	// we keep a map with symbol names to pointers
-	// TODO we could also put them into the boundref expression?
+	// TODO we could also put them into the boundref expression? maybe they're already there??
+	// figure out which define has which child offset
+
 	unordered_map<string, uint8_t *> define_child_mapping;
 	auto defines_struct_child = partition_chunk.GetTypes()[0];
 	for (idx_t struct_child_idx = 0; struct_child_idx < StructType::GetChildCount(defines_struct_child);
@@ -238,10 +238,8 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 		// FIXME
 		FetchPartition(context.client, *collection->inputs, partition_chunk, partition_start, partition_end);
 
-		// TODO this can be cached higher up
-		// figure out which define has which child offset
-
 		for (idx_t partition_idx = partition_start; partition_idx < partition_end; partition_idx++) {
+			vector<string> classifiers;
 			auto match = MatchPattern(*config.pattern, partition_chunk, partition_idx, define_child_mapping).back();
 
 			FlatVector::Validity(gstate.result_vec).SetValid(partition_idx);
@@ -254,8 +252,6 @@ void WindowMatchRecognizeExecutor::Finalize(ExecutionContext &context, Collectio
 			struct_entries[4]->SetValue(partition_idx,
 			                            Value::INTEGER(NumericCast<int32_t>(match.end_idx.GetIndex()) - 1));
 		}
-		// gstate.result_vec.Print(partition_end);
-
 		partition_start = payload_idx;
 	}
 }
