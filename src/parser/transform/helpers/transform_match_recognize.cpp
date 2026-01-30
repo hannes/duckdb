@@ -1,6 +1,7 @@
 #include "duckdb/parser/transformer.hpp"
 #include "duckdb/parser/tableref/match_recognize_ref.hpp"
 #include "duckdb/parser/expression/pattern_expression.hpp"
+#include "duckdb/parser/expression/columnref_expression.hpp"
 
 namespace duckdb {
 

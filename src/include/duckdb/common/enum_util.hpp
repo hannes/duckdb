@@ -50,6 +50,8 @@ enum class AggregateOrderDependent : uint8_t;
 
 enum class AggregateType : uint8_t;
 
+enum class AllowParserOverride : uint8_t;
+
 enum class AlterDatabaseType : uint8_t;
 
 enum class AlterForeignKeyType : uint8_t;
@@ -189,6 +191,8 @@ enum class ExtensionLoadResult : uint8_t;
 enum class ExtensionUpdateResultTag : uint8_t;
 
 enum class ExtraDropInfoType : uint8_t;
+
+enum class ExtraPersistentColumnDataType : uint8_t;
 
 enum class ExtraTypeInfoType : uint8_t;
 
@@ -436,8 +440,6 @@ enum class TablePartitionInfo : uint8_t;
 
 enum class TableReferenceType : uint8_t;
 
-enum class TableScanType : uint8_t;
-
 enum class TaskExecutionMode : uint8_t;
 
 enum class TaskExecutionResult : uint8_t;
@@ -521,6 +523,9 @@ const char* EnumUtil::ToChars<AggregateOrderDependent>(AggregateOrderDependent v
 
 template<>
 const char* EnumUtil::ToChars<AggregateType>(AggregateType value);
+
+template<>
+const char* EnumUtil::ToChars<AllowParserOverride>(AllowParserOverride value);
 
 template<>
 const char* EnumUtil::ToChars<AlterDatabaseType>(AlterDatabaseType value);
@@ -731,6 +736,9 @@ const char* EnumUtil::ToChars<ExtensionUpdateResultTag>(ExtensionUpdateResultTag
 
 template<>
 const char* EnumUtil::ToChars<ExtraDropInfoType>(ExtraDropInfoType value);
+
+template<>
+const char* EnumUtil::ToChars<ExtraPersistentColumnDataType>(ExtraPersistentColumnDataType value);
 
 template<>
 const char* EnumUtil::ToChars<ExtraTypeInfoType>(ExtraTypeInfoType value);
@@ -1102,9 +1110,6 @@ template<>
 const char* EnumUtil::ToChars<TableReferenceType>(TableReferenceType value);
 
 template<>
-const char* EnumUtil::ToChars<TableScanType>(TableScanType value);
-
-template<>
 const char* EnumUtil::ToChars<TaskExecutionMode>(TaskExecutionMode value);
 
 template<>
@@ -1215,6 +1220,9 @@ AggregateOrderDependent EnumUtil::FromString<AggregateOrderDependent>(const char
 
 template<>
 AggregateType EnumUtil::FromString<AggregateType>(const char *value);
+
+template<>
+AllowParserOverride EnumUtil::FromString<AllowParserOverride>(const char *value);
 
 template<>
 AlterDatabaseType EnumUtil::FromString<AlterDatabaseType>(const char *value);
@@ -1425,6 +1433,9 @@ ExtensionUpdateResultTag EnumUtil::FromString<ExtensionUpdateResultTag>(const ch
 
 template<>
 ExtraDropInfoType EnumUtil::FromString<ExtraDropInfoType>(const char *value);
+
+template<>
+ExtraPersistentColumnDataType EnumUtil::FromString<ExtraPersistentColumnDataType>(const char *value);
 
 template<>
 ExtraTypeInfoType EnumUtil::FromString<ExtraTypeInfoType>(const char *value);
@@ -1794,9 +1805,6 @@ TablePartitionInfo EnumUtil::FromString<TablePartitionInfo>(const char *value);
 
 template<>
 TableReferenceType EnumUtil::FromString<TableReferenceType>(const char *value);
-
-template<>
-TableScanType EnumUtil::FromString<TableScanType>(const char *value);
 
 template<>
 TaskExecutionMode EnumUtil::FromString<TaskExecutionMode>(const char *value);

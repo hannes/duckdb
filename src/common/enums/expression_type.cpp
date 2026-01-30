@@ -151,6 +151,8 @@ string ExpressionTypeToString(ExpressionType type) {
 		return "LAMBDA";
 	case ExpressionType::ARROW:
 		return "ARROW";
+	case ExpressionType::TYPE:
+		return "TYPE";
 	case ExpressionType::BOUND_EXPANDED:
 		return "BOUND_EXPANDED";
 	case ExpressionType::ALTERNATION:
@@ -208,6 +210,8 @@ string ExpressionClassToString(ExpressionClass type) {
 		return "BETWEEN";
 	case ExpressionClass::PATTERN:
 		return "PATTERN";
+	case ExpressionClass::TYPE:
+		return "TYPE";
 	case ExpressionClass::BOUND_AGGREGATE:
 		return "BOUND_AGGREGATE";
 	case ExpressionClass::BOUND_CASE:
