@@ -13,7 +13,200 @@
 namespace duckdb {
 
 //! a saner size_t for loop indices etc
-typedef uint64_t idx_t;
+struct idx_t {
+	uint64_t value = 0;
+	idx_t() = default;
+
+	constexpr idx_t(size_t value_p) : value(value_p) {
+	}
+	constexpr idx_t(uint64_t value_p) : value(value_p) {
+	}
+	constexpr idx_t(int64_t value_p) : value(value_p) {
+	}
+	constexpr idx_t(uint32_t value_p) : value(value_p) {
+	}
+	constexpr idx_t(int32_t value_p) : value(value_p) {
+	}
+	constexpr idx_t(long value_p) : value(value_p) {
+	}
+
+	// comparision
+	template <class T>
+	constexpr bool operator==(const T &rhs) const {
+		return value == uint64_t(rhs);
+	}
+
+	template <class T>
+	constexpr bool operator!=(const T &rhs) const {
+		return value != uint64_t(rhs);
+	}
+
+	template <class T>
+	constexpr bool operator<=(const T &rhs) const {
+		return value <= uint64_t(rhs);
+	}
+
+	template <class T>
+	constexpr bool operator>=(const T &rhs) const {
+		return value >= uint64_t(rhs);
+	}
+
+	template <class T>
+	constexpr bool operator>(const T &rhs) const {
+		return value > uint64_t(rhs);
+	}
+
+	template <class T>
+	constexpr bool operator<(const T &rhs) const {
+		return value < uint64_t(rhs);
+	}
+
+	// arithmetic
+	template <class T>
+	constexpr idx_t operator+(const T &rhs) const {
+		// TODO overflow check
+		return value + uint64_t(rhs);
+	}
+
+	template <class T>
+	constexpr idx_t operator-(const T &rhs) const {
+		// TODO underflow check
+		return value - uint64_t(rhs);
+	}
+
+	template <class T>
+	constexpr idx_t operator*(const T &rhs) const {
+		// TODO overflow check
+		return value * uint64_t(rhs);
+	}
+
+	template <class T>
+	constexpr idx_t operator/(const T &rhs) const {
+		return value / uint64_t(rhs);
+	}
+
+	template <class T>
+	constexpr idx_t operator%(const T &rhs) const {
+		return value % uint64_t(rhs);
+	}
+
+	// bitwise
+
+	template <class T>
+	constexpr idx_t operator>>(const T &rhs) const {
+		return value >> uint64_t(rhs);
+	}
+
+	template <class T>
+	constexpr idx_t operator>>(T &rhs) const {
+		return value >> uint64_t(rhs);
+	}
+	template <class T>
+	constexpr idx_t operator<<(const T &rhs) const {
+		return value << uint64_t(rhs);
+	}
+	template <class T>
+	constexpr idx_t operator&(const T &rhs) const {
+		return value & uint64_t(rhs);
+	}
+	template <class T>
+	constexpr idx_t operator|(const T &rhs) const {
+		return value | uint64_t(rhs);
+	}
+	template <class T>
+	constexpr idx_t operator^(const T &rhs) const {
+		return value ^ uint64_t(rhs);
+	}
+
+	idx_t constexpr operator~() const {
+		return ~value;
+	}
+
+	// in-place
+	template <class T>
+	idx_t &operator+=(const T &rhs) {
+		value += uint64_t(rhs);
+		return *this;
+	}
+	template <class T>
+	idx_t &operator-=(const T &rhs) {
+		value -= uint64_t(rhs);
+		return *this;
+	}
+	template <class T>
+	idx_t &operator*=(const T &rhs) {
+		value *= uint64_t(rhs);
+		return *this;
+	}
+	template <class T>
+	idx_t &operator/=(const T &rhs) {
+		value /= uint64_t(rhs);
+		return *this;
+	}
+	template <class T>
+	idx_t &operator%=(const T &rhs) {
+		value %= uint64_t(rhs);
+		return *this;
+	}
+	template <class T>
+	idx_t &operator>>=(const T &rhs) {
+		value >>= uint64_t(rhs);
+		return *this;
+	}
+	template <class T>
+	idx_t &operator<<=(const T &rhs) {
+		value <<= uint64_t(rhs);
+		return *this;
+	}
+	template <class T>
+	idx_t &operator&=(const T &rhs) {
+		value &= uint64_t(rhs);
+		return *this;
+	}
+	template <class T>
+	idx_t &operator|=(const T &rhs) {
+		value |= uint64_t(rhs);
+		return *this;
+	}
+	template <class T>
+	idx_t &operator^=(const T &rhs) {
+		value ^= uint64_t(rhs);
+		return *this;
+	}
+
+	// operators
+	idx_t operator++() {
+		value++;
+	}
+	idx_t operator++(int) {
+		++value;
+	}
+
+	constexpr operator uint64_t() const {
+		return value;
+	}
+	constexpr operator bool() const {
+		return value != 0;
+	}
+	constexpr operator size_t() const {
+		return value;
+	}
+	constexpr operator long() const {
+		return value;
+	}
+
+	// explicit constexpr operator uint8_t() const {return value;}
+	// explicit constexpr operator int8_t() const {return value;}
+	// explicit constexpr operator uint16_t() const {return value;}
+	// explicit constexpr operator int16_t() const {return value;}
+	// explicit constexpr operator int64_t() const {return value;}
+	// explicit constexpr operator int32_t() const {return value;}
+	// explicit constexpr operator uint32_t() const {return value;}
+	// explicit constexpr operator long() const {return value;}
+	//
+};
+
+std::string to_string(const idx_t &x);
 
 //! The type used for row identifiers
 typedef int64_t row_t;
@@ -80,3 +273,13 @@ SRC *cast_uint64_to_pointer(uint64_t value) {
 }
 
 } // namespace duckdb
+
+namespace std {
+template <>
+struct hash<duckdb::idx_t> {
+	size_t operator()(const duckdb::idx_t &val) const {
+		using std::hash;
+		return hash<uint64_t> {}(val.value);
+	}
+};
+} // namespace std

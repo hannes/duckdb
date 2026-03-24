@@ -79,6 +79,25 @@ struct NumericLimits<uhugeint_t> {
 };
 
 template <>
+struct NumericLimits<idx_t> {
+	static constexpr idx_t Minimum() {
+		return {0};
+	};
+	static constexpr idx_t Maximum() {
+		return std::numeric_limits<uint64_t>::max();
+	};
+	static constexpr bool IsSigned() {
+		return false;
+	}
+	static constexpr bool IsIntegral() {
+		return true;
+	}
+	static constexpr idx_t Digits() {
+		return 20;
+	}
+};
+
+template <>
 constexpr idx_t NumericLimits<int8_t>::Digits() {
 	return 3;
 }
