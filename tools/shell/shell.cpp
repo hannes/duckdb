@@ -1048,9 +1048,9 @@ SuccessState ShellState::ExecuteStatement(unique_ptr<duckdb::SQLStatement> state
 			auto msg = "Query interrupted: run time exceeded .timeout of " + to_string(query_timeout_ms) + " ms";
 			auto progress = watchdog.GetProgress();
 			if (progress.GetPercentage() >= 0) {
-				msg += StringUtil::Format(" (%.1f%% completed", progress.GetPercentage());
+				msg += StringUtil::Format(" (~%.1f%% completed", progress.GetPercentage());
 				if (progress.GetRowsProcessed() > 0 && progress.GetTotalRowsToProcess() > 0) {
-					msg += StringUtil::Format(", processed %llu of %llu rows", progress.GetRowsProcessed(),
+					msg += StringUtil::Format(", processed ~%llu of ~%llu rows", progress.GetRowsProcessed(),
 					                          progress.GetTotalRowsToProcess());
 				}
 				msg += ")";
