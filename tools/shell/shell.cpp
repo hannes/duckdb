@@ -94,6 +94,7 @@
 #include "shell_highlight.hpp"
 #include "shell_manual.hpp"
 #include "shell_state.hpp"
+#include "duckdb/common/box_renderer.hpp"
 #include "duckdb/main/error_manager.hpp"
 #include "duckdb/main/client_config.hpp"
 
@@ -950,28 +951,6 @@ ShellState &ShellState::Get() {
 	return *GetReference();
 }
 
-//! Renders a count compactly, e.g. 10000 -> "10k", 285204480 -> "285.2m"
-static string FormatApproximateCount(idx_t count) {
-	struct CountUnit {
-		idx_t base;
-		char suffix;
-	};
-	static constexpr CountUnit UNITS[] = {
-	    {1000000000000ULL, 't'}, {1000000000ULL, 'b'}, {1000000ULL, 'm'}, {1000ULL, 'k'}};
-	for (auto &unit : UNITS) {
-		auto value = static_cast<double>(count) / static_cast<double>(unit.base);
-		if (value < 0.9995) { // would render as less than 1.0 of this unit
-			continue;
-		}
-		auto str = StringUtil::Format("%.1f", value);
-		if (StringUtil::EndsWith(str, ".0")) {
-			str = str.substr(0, str.size() - 2);
-		}
-		return str + unit.suffix;
-	}
-	return to_string(count);
-}
-
 //! Interrupts the connection once the timeout expires, unless the query finishes first
 class QueryWatchdog {
 public:
@@ -1070,10 +1049,15 @@ SuccessState ShellState::ExecuteStatement(unique_ptr<duckdb::SQLStatement> state
 			auto msg = "Query interrupted: run time exceeded .timeout of " + to_string(query_timeout_ms) + " ms";
 			auto progress = watchdog.GetProgress();
 			if (progress.GetPercentage() >= 0) {
+				auto format_count = [&](uint64_t count) {
+					auto str = to_string(count);
+					auto formatted = duckdb::BoxRenderer::TryFormatLargeNumber(str, decimal_separator);
+					return formatted.empty() ? str : formatted;
+				};
 				msg += StringUtil::Format(" (~%.1f%% completed", progress.GetPercentage());
 				if (progress.GetRowsProcessed() > 0 && progress.GetTotalRowsToProcess() > 0) {
-					msg += ", processed ~" + FormatApproximateCount(progress.GetRowsProcessed()) + " of ~" +
-					       FormatApproximateCount(progress.GetTotalRowsToProcess()) + " rows";
+					msg += ", processed ~" + format_count(progress.GetRowsProcessed()) + " of ~" +
+					       format_count(progress.GetTotalRowsToProcess()) + " rows";
 				}
 				msg += ")";
 			}
