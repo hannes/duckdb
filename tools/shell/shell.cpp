@@ -97,6 +97,14 @@
 #include "duckdb/main/error_manager.hpp"
 #include "duckdb/main/client_config.hpp"
 
+#include <algorithm>
+#ifndef DUCKDB_NO_THREADS
+#include <chrono>
+#include <condition_variable>
+#include <mutex>
+#include <thread>
+#endif
+
 using namespace duckdb_shell;
 
 #if defined(_WIN32) || defined(WIN32)
@@ -941,6 +949,67 @@ ShellState &ShellState::Get() {
 	return *GetReference();
 }
 
+//! Interrupts the connection once the timeout expires, unless the query finishes first
+class QueryWatchdog {
+public:
+	QueryWatchdog(duckdb::Connection &conn, idx_t timeout_ms) : conn(conn), timeout_ms(timeout_ms) {
+#ifndef DUCKDB_NO_THREADS
+		if (timeout_ms > 0) {
+			watch_thread = duckdb::make_uniq<std::thread>([this]() { Watch(); });
+		}
+#endif
+	}
+	~QueryWatchdog() {
+#ifndef DUCKDB_NO_THREADS
+		if (!watch_thread) {
+			return;
+		}
+		{
+			std::lock_guard<std::mutex> guard(lock);
+			query_finished = true;
+		}
+		cv.notify_all();
+		watch_thread->join();
+		if (fired) {
+			// clear the interrupt in case the query finished before the interrupt was seen
+			conn.context->ClearInterrupt();
+		}
+#endif
+	}
+
+	bool TimedOut() const {
+#ifndef DUCKDB_NO_THREADS
+		return fired;
+#else
+		return false;
+#endif
+	}
+
+private:
+#ifndef DUCKDB_NO_THREADS
+	void Watch() {
+		std::unique_lock<std::mutex> guard(lock);
+		if (cv.wait_for(guard, std::chrono::milliseconds(timeout_ms), [this]() { return query_finished; })) {
+			// the query finished before the timeout expired
+			return;
+		}
+		fired = true;
+		conn.Interrupt();
+	}
+#endif
+
+private:
+	duckdb::Connection &conn;
+	idx_t timeout_ms;
+#ifndef DUCKDB_NO_THREADS
+	std::mutex lock;
+	std::condition_variable cv;
+	bool query_finished = false;
+	atomic<bool> fired {false};
+	duckdb::unique_ptr<std::thread> watch_thread;
+#endif
+};
+
 SuccessState ShellState::ExecuteStatement(unique_ptr<duckdb::SQLStatement> statement) {
 	if (statement->has_anonymous_parameters) {
 		PrintDatabaseError("Prepared statement parameters cannot be used directly\nTo use prepared "
@@ -949,6 +1018,7 @@ SuccessState ShellState::ExecuteStatement(unique_ptr<duckdb::SQLStatement> state
 	}
 	auto &con = *conn;
 	auto renderer = GetRenderer();
+	QueryWatchdog watchdog(con, query_timeout_ms);
 	unique_ptr<duckdb::QueryResult> result;
 	if (renderer->RequireMaterializedResult()) {
 		// we need to materialize the result prior to rendering
@@ -961,8 +1031,16 @@ SuccessState ShellState::ExecuteStatement(unique_ptr<duckdb::SQLStatement> state
 		result = con.SendQuery(std::move(statement));
 	}
 	auto &res = *result;
+	auto print_query_error = [&]() {
+		if (watchdog.TimedOut() && res.GetErrorObject().Type() == duckdb::ExceptionType::INTERRUPT) {
+			PrintDatabaseError("Query interrupted: run time exceeded .timeout of " + to_string(query_timeout_ms) +
+			                   " ms");
+		} else {
+			PrintDatabaseError(res.GetError());
+		}
+	};
 	if (res.HasError()) {
-		PrintDatabaseError(res.GetError());
+		print_query_error();
 		return SuccessState::FAILURE;
 	}
 	auto &properties = res.properties;
@@ -986,6 +1064,11 @@ SuccessState ShellState::ExecuteStatement(unique_ptr<duckdb::SQLStatement> state
 	}
 	// analyze the query result so we know how long/wide the result will be
 	auto render_state = RenderQueryResult(*renderer, res);
+	if (res.HasError() && !seenInterrupt) {
+		// streaming results can hit an error mid-rendering - surface it after the partial result
+		print_query_error();
+		return SuccessState::FAILURE;
+	}
 	return render_state;
 }
 
@@ -2603,6 +2686,21 @@ SuccessState ShellState::ShowDatabases() {
 	result_list.push_back(std::move(result));
 	RenderTableMetadata(result_list);
 	return SuccessState::SUCCESS;
+}
+
+MetadataResult ShellState::SetQueryTimeout(ShellState &state, const vector<string> &args) {
+#ifdef DUCKDB_NO_THREADS
+	state.PrintF(PrintOutput::STDERR, "Error: query timeout not available on this system.\n");
+	return MetadataResult::FAIL;
+#else
+	auto &arg = args[1];
+	if (arg.empty() || !std::all_of(arg.begin(), arg.end(), [](char c) { return c >= '0' && c <= '9'; })) {
+		state.PrintF(PrintOutput::STDERR, "Error: expected a number of milliseconds, got \"%s\"\n", arg.c_str());
+		return MetadataResult::FAIL;
+	}
+	state.query_timeout_ms = duckdb::NumericCast<idx_t>(StringToInt(arg));
+	return MetadataResult::SUCCESS;
+#endif
 }
 
 MetadataResult ShellState::ToggleTimer(ShellState &state, const vector<string> &args) {

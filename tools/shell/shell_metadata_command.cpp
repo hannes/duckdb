@@ -1005,6 +1005,8 @@ static const MetadataCommand metadata_commands[] = {
     {"tables", 0, ShowTables, "?TABLE?", "List names of tables matching LIKE pattern TABLE", 2, ""},
     {"thousand_sep", 0, SetThousandSep, "SEP",
      "Sets the thousand separator used when rendering numbers. Only for duckbox mode.", 4, ""},
+    {"timeout", 2, ShellState::SetQueryTimeout, "MS",
+     "Interrupt queries that run for more than MS milliseconds (0 to disable)", 0, ""},
     {"timer", 2, ShellState::ToggleTimer, "on|off", "Turn SQL timer on or off", 0, ""},
     {"ui_command", 0, SetUICommand, "[command]", "Set the UI command", 0, ""},
     {"version", 1, ShowVersion, "", "Show the version", 0, ""},
