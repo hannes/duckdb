@@ -98,6 +98,7 @@
 #include "duckdb/main/client_config.hpp"
 
 #include <algorithm>
+#include <cmath>
 #ifndef DUCKDB_NO_THREADS
 #include <chrono>
 #include <condition_variable>
@@ -2688,17 +2689,59 @@ SuccessState ShellState::ShowDatabases() {
 	return SuccessState::SUCCESS;
 }
 
+//! Parses a duration such as "500", "500ms", "10s", "2m" or "0.5h" into milliseconds
+static bool TryParseDuration(const string &arg, idx_t &result_ms) {
+	idx_t pos = 0;
+	while (pos < arg.size() && ((arg[pos] >= '0' && arg[pos] <= '9') || arg[pos] == '.')) {
+		pos++;
+	}
+	if (pos == 0) {
+		return false;
+	}
+	auto number = arg.substr(0, pos);
+	double value;
+	try {
+		size_t consumed;
+		value = std::stod(number, &consumed);
+		if (consumed != number.size()) {
+			return false;
+		}
+	} catch (...) {
+		return false;
+	}
+	double multiplier;
+	auto unit = StringUtil::Lower(arg.substr(pos));
+	if (unit.empty() || unit == "ms") {
+		multiplier = 1;
+	} else if (unit == "s") {
+		multiplier = 1000;
+	} else if (unit == "m" || unit == "min") {
+		multiplier = 60 * 1000;
+	} else if (unit == "h") {
+		multiplier = 60 * 60 * 1000;
+	} else {
+		return false;
+	}
+	auto total_ms = value * multiplier;
+	if (total_ms < 0 || total_ms >= 9007199254740992.0) { // 2^53 - stay within exact double integers
+		return false;
+	}
+	result_ms = duckdb::LossyNumericCast<idx_t>(std::round(total_ms));
+	return true;
+}
+
 MetadataResult ShellState::SetQueryTimeout(ShellState &state, const vector<string> &args) {
 #ifdef DUCKDB_NO_THREADS
 	state.PrintF(PrintOutput::STDERR, "Error: query timeout not available on this system.\n");
 	return MetadataResult::FAIL;
 #else
-	auto &arg = args[1];
-	if (arg.empty() || !std::all_of(arg.begin(), arg.end(), [](char c) { return c >= '0' && c <= '9'; })) {
-		state.PrintF(PrintOutput::STDERR, "Error: expected a number of milliseconds, got \"%s\"\n", arg.c_str());
+	idx_t timeout_ms;
+	if (!TryParseDuration(args[1], timeout_ms)) {
+		state.PrintF(PrintOutput::STDERR, "Error: expected a duration such as 500, 500ms, 10s or 0.5h, got \"%s\"\n",
+		             args[1].c_str());
 		return MetadataResult::FAIL;
 	}
-	state.query_timeout_ms = duckdb::NumericCast<idx_t>(StringToInt(arg));
+	state.query_timeout_ms = timeout_ms;
 	return MetadataResult::SUCCESS;
 #endif
 }

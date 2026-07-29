@@ -61,10 +61,41 @@ def test_timeout_disable(shell):
     result.check_stdout("10000000")
 
 
-def test_timeout_invalid_argument(shell):
+def test_timeout_duration_unit(shell):
     test = (
         ShellTest(shell)
-        .statement(".timeout xyz")
+        .statement(".timeout 1s")
+        .statement(SLOW_QUERY)
     )
     result = test.run()
-    result.check_stderr("expected a number of milliseconds")
+    result.check_stderr("run time exceeded .timeout of 1000 ms")
+
+
+@pytest.mark.parametrize("duration", ["500ms", "10s", "2m", "2min", "0.5h", ".5s", "0"])
+def test_timeout_accepted_durations(shell, duration):
+    test = (
+        ShellTest(shell)
+        .statement(f".timeout {duration}")
+        .statement("SELECT 42 AS x;")
+    )
+    result = test.run()
+    result.check_stdout("42")
+
+
+@pytest.mark.parametrize("duration", ["xyz", "10x", "1.2.3", "s", "-100"])
+def test_timeout_invalid_argument(shell, duration):
+    test = (
+        ShellTest(shell)
+        .statement(f".timeout {duration}")
+    )
+    result = test.run()
+    result.check_stderr("expected a duration")
+
+
+def test_timeout_missing_argument(shell):
+    test = (
+        ShellTest(shell)
+        .statement(".timeout")
+    )
+    result = test.run()
+    result.check_stderr("Invalid usage of command '.timeout'")
