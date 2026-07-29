@@ -950,6 +950,28 @@ ShellState &ShellState::Get() {
 	return *GetReference();
 }
 
+//! Renders a count compactly, e.g. 10000 -> "10k", 285204480 -> "285.2m"
+static string FormatApproximateCount(idx_t count) {
+	struct CountUnit {
+		idx_t base;
+		char suffix;
+	};
+	static constexpr CountUnit UNITS[] = {
+	    {1000000000000ULL, 't'}, {1000000000ULL, 'b'}, {1000000ULL, 'm'}, {1000ULL, 'k'}};
+	for (auto &unit : UNITS) {
+		auto value = static_cast<double>(count) / static_cast<double>(unit.base);
+		if (value < 0.9995) { // would render as less than 1.0 of this unit
+			continue;
+		}
+		auto str = StringUtil::Format("%.1f", value);
+		if (StringUtil::EndsWith(str, ".0")) {
+			str = str.substr(0, str.size() - 2);
+		}
+		return str + unit.suffix;
+	}
+	return to_string(count);
+}
+
 //! Interrupts the connection once the timeout expires, unless the query finishes first
 class QueryWatchdog {
 public:
@@ -1050,8 +1072,8 @@ SuccessState ShellState::ExecuteStatement(unique_ptr<duckdb::SQLStatement> state
 			if (progress.GetPercentage() >= 0) {
 				msg += StringUtil::Format(" (~%.1f%% completed", progress.GetPercentage());
 				if (progress.GetRowsProcessed() > 0 && progress.GetTotalRowsToProcess() > 0) {
-					msg += StringUtil::Format(", processed ~%llu of ~%llu rows", progress.GetRowsProcessed(),
-					                          progress.GetTotalRowsToProcess());
+					msg += ", processed ~" + FormatApproximateCount(progress.GetRowsProcessed()) + " of ~" +
+					       FormatApproximateCount(progress.GetTotalRowsToProcess()) + " rows";
 				}
 				msg += ")";
 			}
