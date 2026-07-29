@@ -15,6 +15,8 @@ def test_timeout_interrupts_query(shell):
     )
     result = test.run()
     result.check_stderr("run time exceeded .timeout of 100 ms")
+    # progress context is reported alongside the timeout
+    result.check_stderr("% completed")
 
 
 def test_timeout_streaming_result(shell):

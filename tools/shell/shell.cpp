@@ -986,6 +986,15 @@ public:
 #endif
 	}
 
+	//! The progress of the query at the time the timeout fired
+	duckdb::QueryProgress GetProgress() const {
+#ifndef DUCKDB_NO_THREADS
+		return fired_progress;
+#else
+		return duckdb::QueryProgress();
+#endif
+	}
+
 private:
 #ifndef DUCKDB_NO_THREADS
 	void Watch() {
@@ -994,6 +1003,7 @@ private:
 			// the query finished before the timeout expired
 			return;
 		}
+		fired_progress = conn.context->GetQueryProgress();
 		fired = true;
 		conn.Interrupt();
 	}
@@ -1007,6 +1017,7 @@ private:
 	std::condition_variable cv;
 	bool query_finished = false;
 	atomic<bool> fired {false};
+	duckdb::QueryProgress fired_progress;
 	duckdb::unique_ptr<std::thread> watch_thread;
 #endif
 };
@@ -1034,8 +1045,17 @@ SuccessState ShellState::ExecuteStatement(unique_ptr<duckdb::SQLStatement> state
 	auto &res = *result;
 	auto print_query_error = [&]() {
 		if (watchdog.TimedOut() && res.GetErrorObject().Type() == duckdb::ExceptionType::INTERRUPT) {
-			PrintDatabaseError("Query interrupted: run time exceeded .timeout of " + to_string(query_timeout_ms) +
-			                   " ms");
+			auto msg = "Query interrupted: run time exceeded .timeout of " + to_string(query_timeout_ms) + " ms";
+			auto progress = watchdog.GetProgress();
+			if (progress.GetPercentage() >= 0) {
+				msg += StringUtil::Format(" (%.1f%% completed", progress.GetPercentage());
+				if (progress.GetRowsProcessed() > 0 && progress.GetTotalRowsToProcess() > 0) {
+					msg += StringUtil::Format(", processed %llu of %llu rows", progress.GetRowsProcessed(),
+					                          progress.GetTotalRowsToProcess());
+				}
+				msg += ")";
+			}
+			PrintDatabaseError(msg);
 		} else {
 			PrintDatabaseError(res.GetError());
 		}
@@ -2742,6 +2762,13 @@ MetadataResult ShellState::SetQueryTimeout(ShellState &state, const vector<strin
 		return MetadataResult::FAIL;
 	}
 	state.query_timeout_ms = timeout_ms;
+	if (timeout_ms > 0) {
+		// track query progress so that a timed-out query can report how far it got
+		state.ExecuteQuery("PRAGMA enable_progress_bar");
+		if (!state.stdout_is_console) {
+			state.ExecuteQuery("SET print_progress_bar=false");
+		}
+	}
 	return MetadataResult::SUCCESS;
 #endif
 }
