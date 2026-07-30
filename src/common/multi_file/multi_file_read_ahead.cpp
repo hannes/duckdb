@@ -57,7 +57,27 @@ MultiFileReadAhead::MultiFileReadAhead(ClientContext &context, idx_t read_ahead_
     : read_ahead_depth(read_ahead_depth_p), memory_governor(std::move(memory_governor_p)) {
 	D_ASSERT(read_ahead_depth_p > 0);
 	backlog_budget = memory_governor ? memory_governor->BackpressureBudget() : NumericLimits<idx_t>::Maximum();
-	executor = make_uniq<TaskExecutor>(context, TaskSchedulerType::ASYNC);
+	executor = make_shared_ptr<TaskExecutor>(context, TaskSchedulerType::ASYNC);
+}
+
+//! Drain a job's pending I/O by executing the read-ahead executor's queued tasks on the calling
+//! thread. Waiting must never depend on a pool thread picking the tasks up: if every pool thread
+//! is occupied (or a wake-up signal was lost), a yield-only wait would spin forever — and when the
+//! wait happens in a destructor during query teardown, that wedges the tearing-down thread for good.
+static void DrainJobIO(MultiFileScanJob &job) {
+	if (!job.io_completion) {
+		return;
+	}
+	while (job.io_completion->PendingIOTasks() > 0) {
+		shared_ptr<Task> task;
+		if (job.io_executor && job.io_executor->GetTask(task)) {
+			task->Execute(TaskExecutionMode::PROCESS_ALL);
+			task.reset();
+			continue;
+		}
+		// the remaining I/O was claimed by another thread and is in flight; wait for it to finish
+		TaskScheduler::YieldThread();
+	}
 }
 
 unique_ptr<MultiFileReadAhead> MultiFileReadAhead::Create(ClientContext &context) {
@@ -148,6 +168,7 @@ void MultiFileReadAhead::PushJob(unique_ptr<MultiFileScanJob> job, vector<unique
 	static constexpr idx_t MINIMUM_JOB_IO_CHARGE = 16ULL * 1024 * 1024;
 	auto completion = make_shared_ptr<ReadAheadJobCompletion>(io_tasks.size());
 	job->io_completion = completion;
+	job->io_executor = executor;
 	for (auto &task : io_tasks) {
 		job->io_bytes += task->GetIOSize();
 	}
@@ -201,11 +222,7 @@ unique_ptr<LocalTableFunctionState> MultiFileReadAhead::TryPopState() {
 }
 
 void MultiFileReadAhead::WaitForJob(MultiFileScanJob &job) {
-	if (job.io_completion) {
-		while (job.io_completion->PendingIOTasks() > 0) {
-			TaskScheduler::YieldThread();
-		}
-	}
+	DrainJobIO(job);
 	// the job's I/O has completed, release its budget charge
 	pending_io_bytes -= job.io_bytes;
 	job.io_bytes = 0;
@@ -237,11 +254,11 @@ MultiFileGlobalState::MultiFileGlobalState(unique_ptr<MultiFileList> owned_file_
 MultiFileGlobalState::~MultiFileGlobalState() = default;
 
 MultiFileLocalState::~MultiFileLocalState() {
-	// job reads might still be going, wait for them before destroying ze job
-	if (job_state == MultiFileJobState::WAIT_IO && job.io_completion) {
-		while (job.io_completion->PendingIOTasks() > 0) {
-			TaskScheduler::YieldThread();
-		}
+	// job reads might still be going, drain them before destroying ze job. This destructor can run
+	// during query teardown (e.g. Executor::CancelTasks destroying a parked task), so it must make
+	// progress on its own instead of waiting for a pool thread.
+	if (job_state == MultiFileJobState::WAIT_IO) {
+		DrainJobIO(job);
 	}
 }
 

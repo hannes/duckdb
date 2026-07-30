@@ -123,8 +123,9 @@ private:
 	atomic<bool> done {false};
 	//! Threads that reserved a slot but have not pushed their job yet
 	atomic<idx_t> active_producers {0};
-	//! Async I/O executor (async pool).
-	unique_ptr<TaskExecutor> executor;
+	//! Async I/O executor (async pool). Shared with every job pushed through PushJob, so waiters
+	//! (WaitForJob, ~MultiFileLocalState) can drain its queue inline regardless of teardown order.
+	shared_ptr<TaskExecutor> executor;
 };
 
 } // namespace duckdb

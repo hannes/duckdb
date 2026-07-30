@@ -23,6 +23,7 @@ struct MultiFileReader;
 struct MultiFileReaderInterface;
 class MultiFileReadAhead;
 class ReadAheadJobCompletion;
+class TaskExecutor;
 
 //! The bind data for the multi-file reader, obtained through MultiFileReader::BindReader
 struct MultiFileReaderBindData {
@@ -239,6 +240,9 @@ struct MultiFileScanJob {
 	idx_t file_index = DConstants::INVALID_INDEX;
 	//! Completion state of the read-ahead I/O tasks for this job.
 	shared_ptr<ReadAheadJobCompletion> io_completion;
+	//! Executor holding this job's scheduled I/O tasks; waiters drain it inline so their progress
+	//! never depends on a pool thread being available.
+	shared_ptr<TaskExecutor> io_executor;
 	//! Total bytes of scheduled read-ahead I/O for this job
 	idx_t io_bytes = 0;
 };
