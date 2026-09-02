@@ -179,3 +179,31 @@ statement error
 SELECT 1 FROM q MATCH_RECOGNIZE(MEASURES i AS x PATTERN (A) PATTERN (A) DEFINE A as true)
 ----
 <REGEX>:Parser Error.*more than one PATTERN clause.*
+
+# ONE ROW PER MATCH reports the match rather than its rows, so its columns are what the match was
+# partitioned by and what was measured. With neither there is nothing to return, which is worth
+# saying rather than letting an empty projection report itself.
+statement error
+SELECT * FROM q MATCH_RECOGNIZE(ORDER BY i PATTERN (A) DEFINE A as true)
+----
+<REGEX>:Binder Error:.*ONE ROW PER MATCH has nothing to return.*
+
+# a measure is enough to have something to report
+query I
+SELECT n FROM q MATCH_RECOGNIZE(ORDER BY i MEASURES count(*) AS n PATTERN (A) DEFINE A as true)
+----
+1
+1
+
+# and so is a partition
+query I
+SELECT j FROM q MATCH_RECOGNIZE(PARTITION BY j ORDER BY i PATTERN (A) DEFINE A as true) ORDER BY j
+----
+1
+2
+
+# ALL ROWS PER MATCH reports the rows, so it needs neither
+query I
+SELECT count(*) FROM q MATCH_RECOGNIZE(ORDER BY i ALL ROWS PER MATCH PATTERN (A) DEFINE A as true)
+----
+2

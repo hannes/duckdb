@@ -703,6 +703,14 @@ BoundStatement Binder::Bind(MatchRecognizeRef &ref) {
 	}
 
 	if (!all_rows) {
+		// ONE ROW PER MATCH reports the match rather than its rows, so the only columns it can report
+		// are the ones identifying the match: what it was partitioned by, and what was measured
+		if (ref.config->partition_expressions.empty() && measure_aliases.empty()) {
+			throw BinderException(
+			    "MATCH_RECOGNIZE with ONE ROW PER MATCH has nothing to return: it reports the match rather "
+			    "than its rows, so without MEASURES or PARTITION BY there are no columns. Add a MEASURES "
+			    "clause, or use ALL ROWS PER MATCH to report the matched rows themselves.");
+		}
 		auto measures_select = make_uniq<SelectStatement>(std::move(select_node));
 		auto filter_node = make_uniq<SelectNode>(make_uniq<SubqueryRef>(std::move(measures_select)));
 		for (auto &expr : ref.config->partition_expressions) {
