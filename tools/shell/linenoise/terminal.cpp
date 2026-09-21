@@ -745,7 +745,17 @@ EscapeSequence Terminal::ReadEscapeSequence(int ifd, KeyPress &key_press) {
 	return EscapeSequence::UNKNOWN;
 }
 
+//! How long to wait for the rest of an escape sequence. Terminals write a sequence in one go, so
+//! anything that has not arrived by now means the user pressed a bare Escape.
+static constexpr idx_t ESCAPE_SEQUENCE_TIMEOUT_MICROS = 50000;
+
 idx_t Terminal::ReadEscapeSequence(int ifd, char seq[]) {
+#if !defined(_WIN32) && !defined(WIN32)
+	// without this a bare Escape blocks in read() until the next key press, and swallows it
+	if (!HasMoreData(ifd, ESCAPE_SEQUENCE_TIMEOUT_MICROS)) {
+		return 0;
+	}
+#endif
 	if (read(ifd, seq, 1) == -1) {
 		return 0;
 	}

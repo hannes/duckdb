@@ -92,6 +92,7 @@
 
 #include "duckdb.hpp"
 #include "shell_renderer.hpp"
+#include "shell_live_preview.hpp"
 #include "shell_highlight.hpp"
 #include "shell_manual.hpp"
 #include "shell_state.hpp"
@@ -417,6 +418,7 @@ ShellState::~ShellState() {
 }
 
 void ShellState::Destroy() {
+	live_preview.reset();
 	db.reset();
 	conn.reset();
 	last_result.reset();
@@ -1969,6 +1971,10 @@ bool ShellState::OpenDatabase(const vector<string> &args) {
 	}
 
 	/* Close the existing database */
+	if (live_preview) {
+		// the panel describes the database we are about to close
+		live_preview->Invalidate();
+	}
 	db.reset();
 	conn.reset();
 
@@ -3024,6 +3030,12 @@ int ShellState::ProcessInput(InputMode mode) {
 	while (errCnt == 0 || !GetBailOnError(mode) || (!in && stdin_is_interactive)) {
 		fflush(out);
 		zLine = OneInputLine(in, zLine, nSql > 0);
+		if (live_preview) {
+			// the editor stops the preview on the key press that got us here - wait for it to let go of
+			// the connection before we run anything on it
+			live_preview->Cancel();
+			live_preview->Join();
+		}
 		if (!zLine) {
 			/* End of input */
 			if (!in && stdin_is_interactive && !started_as_client && conn && conn->context &&
@@ -3635,6 +3647,8 @@ int RunShell(int argc, const char **argv) {
 #endif
 	data.SetTableName(0);
 	data.last_result.reset();
+	// the preview runs on the connection - stop it before the connection goes away
+	data.live_preview.reset();
 	data.db.reset();
 	data.conn.reset();
 	data.ResetOutput();

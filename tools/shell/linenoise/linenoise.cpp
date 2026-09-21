@@ -13,6 +13,7 @@
 #include "history.hpp"
 #include "highlighting.hpp"
 #include "terminal.hpp"
+#include "live_preview.hpp"
 #include "utf8proc_wrapper.hpp"
 #include <unordered_set>
 #include <vector>
@@ -1158,6 +1159,8 @@ Linenoise::Linenoise(int stdin_fd, int stdout_fd, char *buf, size_t buflen, cons
 	rendered_completion_lines = 0;
 	completion_idx = optional_idx();
 	render_completion_suggestion = false;
+	preview_dirty = false;
+	rendered_preview_lines = 0;
 
 	/* Buffer starts empty. */
 	buf[0] = '\0';
@@ -1522,6 +1525,83 @@ vector<ShortcutEntry> GetShellShortcuts() {
 	return shortcuts;
 }
 
+static LivePreviewProvider *live_preview_provider = nullptr;
+
+void LivePreviewProvider::Set(LivePreviewProvider *provider) {
+	live_preview_provider = provider;
+}
+
+LivePreviewProvider *LivePreviewProvider::Get() {
+	return live_preview_provider;
+}
+
+//! How long the buffer must be idle before we launch a preview for it
+static constexpr idx_t LIVE_PREVIEW_DEBOUNCE_MICROS = 120000;
+//! How often the panel is redrawn while a preview is in flight (spinner cadence)
+static constexpr idx_t LIVE_PREVIEW_POLL_MICROS = 80000;
+
+void Linenoise::PumpLivePreview() {
+	auto provider = LivePreviewProvider::Get();
+	if (!provider) {
+		return;
+	}
+	bool was_running = false;
+	while (true) {
+		idx_t timeout_micros;
+		if (preview_dirty) {
+			timeout_micros = LIVE_PREVIEW_DEBOUNCE_MICROS;
+		} else if (provider->IsRunning()) {
+			timeout_micros = LIVE_PREVIEW_POLL_MICROS;
+		} else {
+			if (was_running) {
+				// the preview finished after the last refresh - draw its result before we go back to
+				// blocking on the keyboard, or it would not show up until the next key press
+				RefreshLine();
+			}
+			// nothing pending - fall back to the regular blocking read
+			return;
+		}
+		if (Terminal::HasMoreData(ifd, timeout_micros)) {
+			// a key press arrived - go and handle it. whatever is in flight is left running: the edit may
+			// not change the statement at all (a trailing space, a semicolon), and Start() cancels it when
+			// it turns out that it does
+			return;
+		}
+		if (preview_dirty) {
+			preview_dirty = false;
+			provider->Start(buf, len);
+		}
+		// either a preview just started, or one is in flight and the spinner needs a new frame
+		was_running = provider->IsRunning();
+		RefreshLine();
+	}
+}
+
+void Linenoise::EraseLivePreviewRows() {
+	if (!LivePreviewProvider::Get() || !Terminal::IsMultiline()) {
+		return;
+	}
+	// the panel lived below the input and the shell is about to print over that area. the refresh that
+	// removed it clears the rows it knows about, but the screen may have scrolled while the panel was
+	// on it - erasing to the end of the screen catches whatever that bookkeeping lost track of. safe
+	// because the caller leaves the cursor at the end of the input, so only the panel is below it.
+	Write(ofd, "\x1b[0J", 4);
+}
+
+void Linenoise::ClearLivePreview() {
+	auto provider = LivePreviewProvider::Get();
+	if (!provider) {
+		return;
+	}
+	// the panel is rendered as part of the refresh, so dropping it here makes the next refresh clear
+	// the rows it occupied - otherwise they are left behind once the shell takes the screen back
+	provider->ClearPanel();
+	preview_dirty = false;
+	// nothing else is guaranteed to redraw before the next blocking read, and reading a bare Escape can
+	// block for as long as the user leaves it - the panel has to come off the screen now
+	RefreshLine();
+}
+
 int Linenoise::Edit() {
 	/* The latest history entry is always our current buffer, that
 	 * initially is just an empty string. */
@@ -1531,12 +1611,17 @@ int Linenoise::Edit() {
 		return -1;
 	}
 	while (true) {
+		if (!has_more_data) {
+			PumpLivePreview();
+		}
 		KeyPress key_press;
 		if (!TryGetKeyPress(ifd, key_press)) {
+			ClearLivePreview();
 			return len;
 		}
 		render = true;
 		insert = false;
+		preview_dirty = true;
 
 		if (search) {
 			auto next_action = Search(key_press);
@@ -1628,6 +1713,7 @@ int Linenoise::Edit() {
 				}
 			}
 			// final refresh before returning control to the shell
+			ClearLivePreview();
 			continuation_markers = false;
 			History::RemoveLastEntry();
 			Format();
@@ -1638,6 +1724,7 @@ int Linenoise::Edit() {
 				} else {
 					EditMoveEnd();
 				}
+				EraseLivePreviewRows();
 			}
 			// rewrite \r\n to \n
 			idx_t new_len = 0;
@@ -1652,11 +1739,13 @@ int Linenoise::Edit() {
 		}
 		case CTRL_O:
 		case CTRL_C: /* ctrl-c */ {
+			ClearLivePreview();
 			if (Terminal::IsMultiline()) {
 				continuation_markers = false;
 				// force a refresh by setting pos to 0
 				pos = 0;
 				EditMoveEnd();
+				EraseLivePreviewRows();
 			}
 			buf[0] = '\3';
 			// we keep track of whether or not the line was empty by writing \3 to the second position of the line
@@ -1684,6 +1773,7 @@ int Linenoise::Edit() {
 				EditDelete();
 			} else {
 				History::RemoveLastEntry();
+				ClearLivePreview();
 				return -1;
 			}
 			break;
@@ -1718,6 +1808,11 @@ int Linenoise::Edit() {
 		}
 		case ESC: /* escape sequence */ {
 			EscapeSequence escape = key_press.sequence;
+			if (escape == EscapeSequence::INVALID || escape == EscapeSequence::ESCAPE) {
+				// a bare escape means "stop" - drop the panel and leave it alone until the buffer changes,
+				// rather than immediately running the query the user just walked away from again
+				ClearLivePreview();
+			}
 			switch (escape) {
 			case EscapeSequence::CTRL_UP:
 				EditHistoryNext(HistoryScrollDirection::LINENOISE_HISTORY_START);

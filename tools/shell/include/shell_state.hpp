@@ -40,6 +40,7 @@ using duckdb::SQLString;
 using duckdb::unordered_map;
 using duckdb::unordered_set;
 struct ShellState;
+class ShellLivePreview;
 using duckdb::InternalException;
 using duckdb::InvalidInputException;
 using duckdb::to_string;
@@ -161,8 +162,10 @@ enum class AutoFormatMode { NO_AUTO_FORMAT, AUTO_FORMAT_COMPLETE_STATEMENTS };
 */
 struct ShellState {
 public:
-	unique_ptr<duckdb::DuckDB> db;            /* The database */
-	unique_ptr<duckdb::Connection> conn;      /* The primary connection to the database */
+	unique_ptr<duckdb::DuckDB> db;       /* The database */
+	unique_ptr<duckdb::Connection> conn; /* The primary connection to the database */
+	/* Runs the statement being typed and renders it below the prompt - set by .live on */
+	unique_ptr<ShellLivePreview> live_preview;
 	duckdb::DBConfig config;                  /* Config used for opening the database */
 	uint8_t doXdgOpen = 0;                    /* Invoke start/open/xdg-open in output_reset() */
 	int outCount = 0;                         /* Revert to stdout when reaching zero */

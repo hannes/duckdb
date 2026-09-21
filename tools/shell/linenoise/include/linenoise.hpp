@@ -151,6 +151,16 @@ public:
 	void RefreshSingleLine() const;
 	void RefreshSearch();
 
+	//! Drive the live preview until a key press arrives - launches the preview once the buffer has been idle for
+	//! long enough, and keeps the panel redrawing while the query is in flight
+	void PumpLivePreview();
+	//! Drop the live preview panel, so the next refresh clears the rows it occupied
+	void ClearLivePreview();
+	//! Erase anything the panel left below the cursor before the shell takes the screen back
+	void EraseLivePreviewRows();
+	//! Append the live preview panel to the refresh buffer, returning the number of rows it occupies
+	idx_t RenderLivePreviewPanel(AppendBuffer &append_buffer, idx_t available_rows);
+
 	size_t PrevChar() const;
 	size_t NextChar() const;
 
@@ -237,6 +247,8 @@ public:
 	optional_idx completion_idx;             //! Index in set of tab completions
 	idx_t rendered_completion_lines;         //! The number of completion lines rendered
 	bool render_completion_suggestion;       //! Whether or not to render auto-complete suggestions
+	bool preview_dirty;                      //! Whether the buffer changed since the live preview was last launched
+	idx_t rendered_preview_lines;            //! The number of live preview lines rendered
 };
 
 } // namespace duckdb

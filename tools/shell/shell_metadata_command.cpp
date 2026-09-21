@@ -3,6 +3,7 @@
 #include "shell_prompt.hpp"
 #include "shell_progress_bar.hpp"
 #include "shell_renderer.hpp"
+#include "shell_live_preview.hpp"
 
 #ifdef HAVE_LINENOISE
 #include "linenoise.h"
@@ -886,6 +887,33 @@ MetadataResult SetPager(ShellState &state, const vector<string> &args) {
 	return MetadataResult::SUCCESS;
 }
 
+#ifdef HAVE_LINENOISE
+MetadataResult ToggleLivePreview(ShellState &state, const vector<string> &args) {
+	if (args.size() != 2) {
+		return MetadataResult::PRINT_USAGE;
+	}
+	if (state.StringToBool(args[1])) {
+		if (!state.stdin_is_interactive || !state.stdout_is_console) {
+			// the panel is drawn below the prompt, which only exists on a terminal
+			state.PrintF(PrintOutput::STDERR, ".live requires an interactive terminal\n");
+			return MetadataResult::FAIL;
+		}
+		if (!state.live_preview) {
+			state.live_preview = duckdb::make_uniq<ShellLivePreview>(state);
+		}
+		duckdb::LivePreviewProvider::Set(state.live_preview.get());
+	} else {
+		duckdb::LivePreviewProvider::Set(nullptr);
+		if (state.live_preview) {
+			state.live_preview->Cancel();
+			state.live_preview->Join();
+		}
+		state.live_preview.reset();
+	}
+	return MetadataResult::SUCCESS;
+}
+#endif
+
 static const MetadataCommand metadata_commands[] = {
     {"about", 0, ToggleAbout, "", "Show information about DuckDB", 0, ""},
 #ifdef HAVE_LINENOISE
@@ -960,6 +988,12 @@ static const MetadataCommand metadata_commands[] = {
      "Render the last result in full (after EXPLAIN ANALYZE: the full, expanded query tree)", 0, ""},
     {"large_number_rendering", 2, SetLargeNumberRendering, "MODE",
      "Toggle readable rendering of large numbers (duckbox only)", 0, "Mode: all|footer|off"},
+#ifdef HAVE_LINENOISE
+    {"live", 2, ToggleLivePreview, "on|off", "Run the statement being typed and show the first rows below the prompt",
+     0,
+     "Only statements that cannot modify the database are run. The preview is cancelled as soon as\n"
+     "the next key is pressed, and is suspended while an explicit transaction is open."},
+#endif
     {"log", 2, ToggleLog, "FILE|off", "Turn logging on or off.  FILE can be stderr/stdout", 0, ""},
     {"manual", 2, ShowManual, "FUNCTION", "Show the manual page for a SQL function", 0,
      "Displays the signatures, descriptions and examples of all overloads of FUNCTION.\n"

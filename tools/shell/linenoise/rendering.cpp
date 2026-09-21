@@ -4,6 +4,8 @@
 #include "utf8proc_wrapper.hpp"
 #include "shell_highlight.hpp"
 #include "shell_state.hpp"
+#include "live_preview.hpp"
+#include "duckdb/common/string_util.hpp"
 #if defined(_WIN32) || defined(WIN32)
 #include <io.h>
 #else
@@ -774,6 +776,47 @@ bool Linenoise::AddCompletionMarker(const char *buf, idx_t len, string &result_b
 	return true;
 }
 
+idx_t Linenoise::RenderLivePreviewPanel(AppendBuffer &append_buffer, idx_t available_rows) {
+	auto provider = LivePreviewProvider::Get();
+	if (!provider || !provider->HasPanel() || available_rows == 0) {
+		return 0;
+	}
+	// an error that points at a character in the buffer gets a marker directly below it. that only
+	// lines up when the character is on the last rendered row, which is where a query being typed
+	// usually is - otherwise the panel repeats the offending line itself
+	LivePreviewAnchor anchor;
+	idx_t error_offset, error_length;
+	if (y_scroll == 0 && provider->TryGetErrorLocation(error_offset, error_length) && error_offset <= len) {
+		int error_row, error_col, total_rows, total_cols;
+		PositionToColAndRow(error_offset, error_row, error_col, total_rows, total_cols);
+		if (error_row == total_rows) {
+			anchor.column = NumericCast<idx_t>(error_col);
+			anchor.width = MinValue<idx_t>(error_length, NumericCast<idx_t>(ws.ws_col) - NumericCast<idx_t>(error_col));
+		}
+	}
+	auto panel = provider->Render(available_rows, ws.ws_col, anchor);
+	if (panel.empty()) {
+		return 0;
+	}
+	auto lines = duckdb::StringUtil::Split(panel, '\n');
+	if (lines.size() > available_rows) {
+		lines.resize(available_rows);
+	}
+	for (auto &line : lines) {
+		// a line that wraps would throw off the row accounting - truncate it to the terminal width
+		// rows are counted from 1, so the first row of the line is row 1
+		auto max_render_pos = ColAndRowToPosition(0, line.c_str(), line.size(), 1, ws.ws_col);
+		if (max_render_pos < line.size()) {
+			line = line.substr(0, max_render_pos);
+		}
+		append_buffer.Append("\r\n\x1b[0K");
+		append_buffer.Append(line.c_str(), line.size());
+		// the panel must never leave a colour behind for the prompt to inherit
+		append_buffer.Append(duckdb_shell::ShellHighlight::ResetTerminalCode().c_str());
+	}
+	return lines.size();
+}
+
 /* Multi line low level line refresh.
  *
  * Rewrite the currently edited line accordingly to the buffer content,
@@ -806,6 +849,10 @@ void Linenoise::RefreshMultiLine() {
 	if (render_completion_suggestion && !completion_list.completions.empty()) {
 		// if we are rendering completions keep at least one line clear for rendering them
 		max_rows_to_render--;
+	}
+	if (rendered_preview_lines > 0 && max_rows_to_render > rendered_preview_lines + 1) {
+		// keep the space the live preview panel occupied last refresh clear
+		max_rows_to_render -= rendered_preview_lines;
 	}
 	if (NumericCast<idx_t>(rows) > max_rows_to_render) {
 		if (max_rows_to_render == NumericCast<idx_t>(ws.ws_row) && rendered_completion_lines > 0) {
@@ -1094,6 +1141,20 @@ void Linenoise::RefreshMultiLine() {
 		Linenoise::Log("auto-complete lines %d\n", int(rendered_completion_lines));
 	} else {
 		rendered_completion_lines = 0;
+	}
+
+	// the live preview panel goes below the input - completions take precedence over it
+	rendered_preview_lines = 0;
+	if (rendered_completion_lines == 0 && NumericCast<idx_t>(rows) + 1 < NumericCast<idx_t>(ws.ws_row)) {
+		// the panel gets whatever the input leaves over, minus a line so the screen never ends flush
+		// against it. the input is laid out first, so it never loses room to the panel
+		idx_t available_rows = NumericCast<idx_t>(ws.ws_row) - NumericCast<idx_t>(rows) - 1;
+		rendered_preview_lines = RenderLivePreviewPanel(append_buffer, available_rows);
+		rows += NumericCast<int>(rendered_preview_lines);
+		if (rows > (int)maxrows) {
+			maxrows = rows;
+		}
+		Linenoise::Log("live preview lines %d\n", int(rendered_preview_lines));
 	}
 
 	Linenoise::Log("render %d rows (old rows %d)\n", rows, old_rows);
