@@ -19,7 +19,9 @@ name MatchRecognize Crime Sequence
 group micro
 subgroup match_recognize
 
+# the search this benchmark measures is the one match_recognize_max_states is there to stop
 load
+SET match_recognize_max_states=0;
 CREATE TABLE crimes AS
     SELECT * FROM read_parquet('http://blobs.duckdb.org/data/crimes.parquet') ORDER BY datetime LIMIT 4000;
 
